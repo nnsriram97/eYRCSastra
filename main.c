@@ -564,7 +564,15 @@ char volatile taskCost = 0;
 char volatile otherBotLocation = -1;
 char volatile otherBotMovingTo = -1;
 char volatile otherBotTaskCost = 0;
-char volatile otherBotLastTaskIndex=-1;
+
+#ifdef MASTER
+	char volatile otherBotLastTaskIndex=13;
+	int botloc=1;
+#else
+	char volatile otherBotLastTaskIndex=1;
+	int botloc=13;
+#endif
+	
 
 char volatile lastCommand = -1;
 
@@ -795,8 +803,7 @@ int node[48][4]; // Possible node connections for each and every node
 int angle[48][4];   // Angle of orientation of a node from a paritcular node with respect to the xy plane
 int cost[48];
 int botang=90;
-int botloc=1;
-//int botloc=13;
+
 
 int taskitr=0;  // Task Iterating Variable
 
@@ -920,13 +927,13 @@ void rotate(int turnang)
 int move(int n)
 {
 	int suc=1,turnang;
-	turnang=angle[botloc-1][pos]-botang;
+	turnang=angle[botloc-1][n]-botang;
 	if(fabs(turnang)>45)
 	{
 		forward_mm(70);
 		rotate(turnang);
 	}
-	botang=angle[botloc-1][pos];
+	botang=angle[botloc-1][n];
 	forward();
 	while(1)
 	{
@@ -983,7 +990,27 @@ int move(int n)
 	}
 	return suc;
 }
-
+int LastLocation;
+int BotEndLocation(int loc)
+{
+	int i;
+	if(cost[loc-1]==0)
+	{
+		LastLocation=loc;
+		return LastLocation;
+	}
+	int mCost=cost[node[loc-1][0]];
+	int pos=p;
+	for(i=1;i<4;i++)
+	{
+		if(cost[node[loc-1][i]]<mCost)
+		{
+			mCost=cost[node[loc-1][i]];
+			pos=i;
+		}
+	}
+	return BotEndLocation(node[loc-1][pos]);
+}
 
 int main()
 {
@@ -998,20 +1025,22 @@ int main()
 	
 	while(notes[noteToStrike]!=0)
 	{
-		if(taskCount==taskitr)
+		if(taskCount==taskitr)	// If the bot has traversed all Tasks in the list
 		{
-			costplan(nodesnear[(int)notes[(int)noteToProcess]-1]);
-			if(cost[botloc-1]>((int)otherBotTaskCost+cost[(int)otherBotLastTaskIndex]))
+			costplan(nodesnear[(int)notes[(int)noteToProcess]-1]);	// Calculate cost for the next Note to process for the full map
+			if(cost[botloc-1]>((int)otherBotTaskCost+cost[(int)otherBotLastTaskIndex])) // Give the Task to the Bot which has less Total Cost
 			{
-				SendTaskToSlave((int)noteToProcess);
-				SendTaskCost(cost[(int)otherBotLastTaskIndex]);
+				SendTaskToSlave((int)noteToProcess);			// Send the Task to the other bot if it has less cost
+				SendTaskCost(cost[(int)otherBotLastTaskIndex]);		// Send the cost for the processed task
+				otherBotLastTaskIndex=BotEndLocation((int)otherBotLastTaskIndex);	// Update the other bot last index
 			}
 			else
 			{
-				tasks[taskCount]=(int)noteToProcess;
-				taskCost+=cost[botloc-1];
+				tasks[taskCount]=(int)noteToProcess;	// If the bot has less cost than the other bot add the task to the list
+				taskCost+=cost[botloc-1];		//
 				taskCount++;
 				SendLastIndex((int)noteToProcess);
+				SendLastIndex((int)BotEndLocation(botloc));
 			}
 			NoteProcessed(noteToProcess);
 		}
