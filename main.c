@@ -804,8 +804,8 @@ int botang=90;
 
 int taskitr=0;  // Task Iterating Variable
 
-unsigned long int ShaftCountLeft = 0; //to keep track of left position encoder 
-unsigned long int ShaftCountRight = 0; //to keep track of right position encoder
+volatile unsigned long int ShaftCountLeft = 0; //to keep track of left position encoder 
+volatile unsigned long int ShaftCountRight = 0; //to keep track of right position encoder
 unsigned int Degrees; //to accept angle in degrees for turning
 
 unsigned char ADC_Conversion(unsigned char);
