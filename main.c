@@ -1,8 +1,35 @@
+//Uncomment if this robot receives data from PC
+#define MASTER
+
+#define F_CPU 14745600UL
+
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <util/delay.h>
+//#include "lcd.h"
+
+//#define RS 0
+//#define RW 1
+//#define EN 2
+//#define lcd_port PORTC
+
+//////////////////////////////////////////////////////////////////////////
+//LCD def
+#define LCD_IO_MODE 1
+#define LCD_PORT PORTC
+#define LCD_RS_PIN 0
+#define LCD_RW_PIN 1
+#define LCD_E_PIN 2
+#define LCD_DATA0_PIN 4
+#define LCD_DATA1_PIN 5
+#define LCD_DATA2_PIN 6
+#define LCD_DATA3_PIN 7
+
+#define sbit(reg,bit)	reg |= (1<<bit)
+#define cbit(reg,bit)	reg &= ~(1<<bit)
+
 #include <math.h>
-#define F_CPU 14745600UL
+
 //////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////   Constants
@@ -532,9 +559,6 @@ void declare_constants()
 //////////////////////////////////////////////////////////////////////////////////////////////////
 //    COMM LAYER
 
-//Uncomment if this robot receives data from PC
-//#define MASTER
-
 #define MAX_NOTES 20
 
 //Comm commands
@@ -569,6 +593,8 @@ char volatile otherBotLocation = -1;
 char volatile otherBotMovingTo = -1;
 char volatile otherBotTaskCost = 0;
 
+char volatile notesReceived = 0;
+
 #ifdef MASTER
 	char volatile otherBotLastTaskIndex=13;
 	int botloc=1;
@@ -581,14 +607,6 @@ char volatile otherBotTaskCost = 0;
 char volatile lastCommand = -1;
 
 int botEnd = 0;
-
-//status register bitfield
-volatile struct
-{
-	unsigned char notesReceived	:1;
-	unsigned char isWaiting		:1;
-	
-}status;
 
 //ZigBee
 ISR(USART0_RX_vect)
@@ -605,6 +623,7 @@ ISR(USART0_RX_vect)
 			case RC_NOT_S:
 			notes[(int)noteCount] = data;
 			noteCount++;
+			PORTJ = noteCount;
 			break;
 			
 			case ADD_TASK:
@@ -650,7 +669,7 @@ ISR(USART0_RX_vect)
 		switch(data)
 		{
 			case RC_NOT_E:
-			status.notesReceived = 1;
+			notesReceived = 1;
 			break;
 		}
 	}
@@ -662,19 +681,22 @@ ISR(USART2_RX_vect)
 {
 	char data = UDR2;
 	//indicate end of notes by \n
-	if(!(data == '\n')
+	if(!(data == 255))
 	{
 		//is a note
-		notes[noteCount] = data;
+		notes[(int)noteCount] = data;
 		noteCount++;
+		//lcd_print(1,1,data,3);
+		PORTJ = noteCount;
 	}
 	else
 	{
 		//all notes received
-		UDR2 = 'D';
-		while(!(UCSR2A & (1 << UDRE2)));
-		UDR2 = '\n';
-		status.notesReceived = 1;
+		//UDR2 = 'D';
+		//while(!(UCSR2A & (1 << UDRE2)));
+		//UDR2 = '\n';
+		PORTJ = 0;
+		notesReceived = 1;
 	}
 }
 #endif
@@ -692,13 +714,17 @@ void inline SendByteToSlave(unsigned char data)
 void inline SendNotesToSlave()
 {
 	SendByteToSlave(RC_NOT_S);
+	//lcd_string("Start");
+	_delay_ms(1000);
 	int i;
 	for(i = 0; i<noteCount; i++)
 	{
-		int data = DATA(notes[i]);
-		SendByteToSlave(DATA(data));
+		SendByteToSlave(DATA(notes[i]));
+		//lcd_print(1,1,(int)notes[i],3);
+		_delay_ms(1000);
 	}
 	SendByteToSlave(RC_NOT_E);
+	_delay_ms(1000);
 }
 #endif
 
@@ -843,12 +869,6 @@ PORTC = port_restore;
 
 void timer5_init();
 void velocity(unsigned char, unsigned char);
-//Function to configure LCD port
-void lcd_port_config (void)
-{
- DDRC = DDRC | 0xF7; //all the LCD pin's direction set as output
- PORTC = PORTC & 0x80; // all the LCD pins are set to logic 0 except PORTC 7
-}
 
 //ADC pin configuration
 void adc_pin_config (void)
@@ -881,13 +901,223 @@ void right_encoder_pin_config (void)
  PORTE = PORTE | 0x20; //Enable internal pull-up for PORTE 4 pin
 }
 
+////////////////////////////////////////////////////////////////////////////
+//// LCD commands
+////////////////////////////////////////////////////////////////////////////
+//
+//unsigned int temp;
+//unsigned int unit;
+//unsigned int tens;
+//unsigned int hundred;
+//unsigned int thousand;
+//unsigned int million;
+//
+////Function to configure LCD port
+//void lcd_port_config (void)
+//{
+	//DDRC = DDRC | 0xF7; //all the LCD pin's direction set as output
+	//PORTC = PORTC & 0x80; // all the LCD pins are set to logic 0 except PORTC 7
+//}
+//
+///*****Function to Reset LCD*****/
+//void lcd_set_4bit()
+//{
+	//_delay_ms(1);
+//
+	//cbit(lcd_port,RS);				//RS=0 --- Command Input
+	//cbit(lcd_port,RW);				//RW=0 --- Writing to LCD
+	//lcd_port = 0x30;				//Sending 3
+	//sbit(lcd_port,EN);				//Set Enable Pin
+	//_delay_ms(5);					//Delay
+	//cbit(lcd_port,EN);				//Clear Enable Pin
+//
+	//_delay_ms(1);
+//
+	//cbit(lcd_port,RS);				//RS=0 --- Command Input
+	//cbit(lcd_port,RW);				//RW=0 --- Writing to LCD
+	//lcd_port = 0x30;				//Sending 3
+	//sbit(lcd_port,EN);				//Set Enable Pin
+	//_delay_ms(5);					//Delay
+	//cbit(lcd_port,EN);				//Clear Enable Pin
+//
+	//_delay_ms(1);
+//
+	//cbit(lcd_port,RS);				//RS=0 --- Command Input
+	//cbit(lcd_port,RW);				//RW=0 --- Writing to LCD
+	//lcd_port = 0x30;				//Sending 3
+	//sbit(lcd_port,EN);				//Set Enable Pin
+	//_delay_ms(5);					//Delay
+	//cbit(lcd_port,EN);				//Clear Enable Pin
+//
+	//_delay_ms(1);
+//
+	//cbit(lcd_port,RS);				//RS=0 --- Command Input
+	//cbit(lcd_port,RW);				//RW=0 --- Writing to LCD
+	//lcd_port = 0x20;				//Sending 2 to initialise LCD 4-bit mode
+	//sbit(lcd_port,EN);				//Set Enable Pin
+	//_delay_ms(5);					//Delay
+	//cbit(lcd_port,EN);				//Clear Enable Pin
+//
+	//
+//}
+//
+///*****Function to Write Command on LCD*****/
+//void lcd_wr_command(unsigned char cmd)
+//{
+	//unsigned char temp;
+	//temp = cmd;
+	//temp = temp & 0xF0;
+	//lcd_port &= 0x0F;
+	//lcd_port |= temp;
+	//cbit(lcd_port,RS);
+	//cbit(lcd_port,RW);
+	//sbit(lcd_port,EN);
+	//_delay_ms(5);
+	//cbit(lcd_port,EN);
+	//
+	//cmd = cmd & 0x0F;
+	//cmd = cmd<<4;
+	//lcd_port &= 0x0F;
+	//lcd_port |= cmd;
+	//cbit(lcd_port,RS);
+	//cbit(lcd_port,RW);
+	//sbit(lcd_port,EN);
+	//_delay_ms(5);
+	//cbit(lcd_port,EN);
+//}
+//
+///*****Function to Write Data on LCD*****/
+//void lcd_wr_char(char letter)
+//{
+	//char temp;
+	//temp = letter;
+	//temp = (temp & 0xF0);
+	//lcd_port &= 0x0F;
+	//lcd_port |= temp;
+	//sbit(lcd_port,RS);
+	//cbit(lcd_port,RW);
+	//sbit(lcd_port,EN);
+	//_delay_ms(5);
+	//cbit(lcd_port,EN);
+//
+	//letter = letter & 0x0F;
+	//letter = letter<<4;
+	//lcd_port &= 0x0F;
+	//lcd_port |= letter;
+	//sbit(lcd_port,RS);
+	//cbit(lcd_port,RW);
+	//sbit(lcd_port,EN);
+	//_delay_ms(5);
+	//cbit(lcd_port,EN);
+//}
+//
+///*****Function to Initialize LCD*****/
+//void lcd_init()
+//{
+	//_delay_ms(1);
+//
+	//lcd_wr_command(0x28);			//LCD 4-bit mode and 2 lines.
+	//lcd_wr_command(0x01);
+	//lcd_wr_command(0x06);
+	//lcd_wr_command(0x0E);
+	//lcd_wr_command(0x80);
+	//
+//}
+//
+////Function to bring cursor at home position
+//void lcd_home()
+//{
+	//lcd_wr_command(0x80);
+//}
+//
+//
+////Function to Print String on LCD
+//void lcd_string(char *str)
+//{
+	//while(*str != '\0')
+	//{
+		//lcd_wr_char(*str);
+		//str++;
+	//}
+//}
+//
+////Position the LCD cursor at "row", "column".
+//
+//void lcd_cursor (char row, char column)
+//{
+	//switch (row) {
+		//case 1: lcd_wr_command (0x80 + column - 1); break;
+		//case 2: lcd_wr_command (0xc0 + column - 1); break;
+		//case 3: lcd_wr_command (0x94 + column - 1); break;
+		//case 4: lcd_wr_command (0xd4 + column - 1); break;
+		//default: break;
+	//}
+//}
+//
+////Function To Print Any input value upto the desired digit on LCD
+//void lcd_print (char row, char coloumn, unsigned int value, int digits)
+//{
+	//unsigned char flag=0;
+	//if(row==0||coloumn==0)
+	//{
+		//lcd_home();
+	//}
+	//else
+	//{
+		//lcd_cursor(row,coloumn);
+	//}
+	//if(digits==5 || flag==1)
+	//{
+		//million=value/10000+48;
+		//lcd_wr_char(million);
+		//flag=1;
+	//}
+	//if(digits==4 || flag==1)
+	//{
+		//temp = value/1000;
+		//thousand = temp%10 + 48;
+		//lcd_wr_char(thousand);
+		//flag=1;
+	//}
+	//if(digits==3 || flag==1)
+	//{
+		//temp = value/100;
+		//hundred = temp%10 + 48;
+		//lcd_wr_char(hundred);
+		//flag=1;
+	//}
+	//if(digits==2 || flag==1)
+	//{
+		//temp = value/10;
+		//tens = temp%10 + 48;
+		//lcd_wr_char(tens);
+		//flag=1;
+	//}
+	//if(digits==1 || flag==1)
+	//{
+		//unit = value%10 + 48;
+		//lcd_wr_char(unit);
+	//}
+	//if(digits>5)
+	//{
+		//lcd_wr_char('E');
+	//}
+	//
+//}
+
+
+
+//////////////////////////////////////////////////////////////////////////
+
+
+
 //Function to initialize ports
 void port_init()
 {
  motion_pin_config(); //robot motion pins config
  left_encoder_pin_config(); //left encoder pin config
  right_encoder_pin_config(); //right encoder pin config	
- lcd_port_config();
+ //lcd_port_config();
  adc_pin_config();
  buzzer_pin_config();
 }
@@ -947,7 +1177,7 @@ void print_sensor(char row, char coloumn,unsigned char channel)
 {
 	
 	ADC_Value = ADC_Conversion(channel);
-	lcd_print(row, coloumn, ADC_Value, 3);
+	//lcd_print(row, coloumn, ADC_Value, 3);
 }
 
 //Function for velocity control
@@ -1058,7 +1288,7 @@ void angle_rotate(unsigned int Degrees)
 
  while (1)
  {
-  lcd_print(1,5,ShaftCountRight,3);
+  //lcd_print(1,5,ShaftCountRight,3);
   //lcd_print(2,10,ShaftCountRight,2);
   if((ShaftCountRight >= ReqdShaftCountInt) | (ShaftCountLeft >= ReqdShaftCountInt))
   break;
@@ -1084,6 +1314,12 @@ void right_degrees(unsigned int Degrees)
  angle_rotate(Degrees);
 }
 
+void LED_bargraph_config (void)
+{
+	DDRJ = 0xFF;  //PORT J is configured as output
+	PORTJ = 0x00; //Output is set to 0
+}
+
 void init_devices()
 {
  cli(); //Clears the global interrupt
@@ -1094,6 +1330,9 @@ void init_devices()
  right_position_encoder_interrupt_init();
  adc_init();
  timer5_init();
+ //lcd_set_4bit();
+ //lcd_init();
+ LED_bargraph_config();
  sei();   // Enables the global interrupt 
 }
 
@@ -1237,27 +1476,27 @@ int move(int n)
 		{
 			forward();
 			velocity(0,0);
-			lcd_print(2,1,100,3);
+			//lcd_print(2,1,100,3);
 			break;
 		}
 		else if(Left_white_line>thresh)
 		{
 			//flag=1;
 			forward();
-			lcd_print(2,1,1,3);
+			//lcd_print(2,1,1,3);
 			velocity(0,90);
 		}
 		else if(Right_white_line>thresh)
 		{
 			//flag=1;
 			forward();
-			lcd_print(2,1,2,3);
+			//lcd_print(2,1,2,3);
 			velocity(90,0);
 		}
 		else if(Center_white_line>0x78)
 		{
 			velocity(130,130);
-			lcd_print(2,1,0,3);
+			//lcd_print(2,1,0,3);
 			//flag=1;
 		}
 		else if(Center_white_line<thresh && Left_white_line<thresh && Right_white_line<thresh)
@@ -1293,14 +1532,19 @@ int main()
 {
 	declare_constants();
 	init_devices();
-	while(status.notesReceived);
-	
+	//lcd_init(LCD_DISP_ON_CURSOR_BLINK);
+	PORTJ = 0x00;
+	notesReceived = 0;
+	while(!notesReceived);
+	PORTJ = 0xFF;
+	//lcd_puts("Rec");
 	//send the notes to slave if this is the master
 	#ifdef MASTER
 	SendNotesToSlave();
+	PORTJ = 0x0F;
 	#endif
 	
-	while(notes[noteToStrike]!=0)
+	while(notes[(int)noteToStrike]!=0)
 	{
 		if(taskCount==taskitr)	// If the bot has traversed all Tasks in the list
 		{
@@ -1313,7 +1557,7 @@ int main()
 			}
 			else
 			{
-				tasks[taskCount]=(int)noteToProcess;	// If the bot has less cost than the other bot add the task to the list
+				tasks[(int)taskCount]=(int)noteToProcess;	// If the bot has less cost than the other bot add the task to the list
 				taskCost+=cost[botloc-1];		//
 				taskCount++;
 				SendLastIndex((int)noteToProcess);
@@ -1365,6 +1609,9 @@ int main()
 				while(noteToStrike!=tasks[taskitr]);
 				// Servo Motor Control
 				// Strike the Note
+				buzzer_on();
+				_delay_ms(500);
+				buzzer_off();
 				taskitr++;
 				SendNoteStruck(noteToStrike);
 			}
