@@ -37,7 +37,6 @@ SUBDIRS :=
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS +=  \
-../lcd.c \
 ../main.c
 
 
@@ -48,19 +47,15 @@ ASM_SRCS +=
 
 
 OBJS +=  \
-lcd.o \
 main.o
 
 OBJS_AS_ARGS +=  \
-lcd.o \
 main.o
 
 C_DEPS +=  \
-lcd.d \
 main.d
 
 C_DEPS_AS_ARGS +=  \
-lcd.d \
 main.d
 
 OUTPUT_FILE_PATH +=Task5.elf
@@ -77,8 +72,6 @@ LINKER_SCRIPT_DEP+=
 
 
 # AVR32/GNU C Compiler
-
-
 
 
 
