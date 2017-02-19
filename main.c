@@ -1,5 +1,5 @@
 //Uncomment if this robot receives data from PC
-#define MASTER
+//#define MASTER
 
 #define F_CPU 14745600UL
 
@@ -773,15 +773,13 @@ void declare_constants()
 
 char volatile notes[MAX_NOTES];
 char volatile noteCount = 0;
-char volatile noteToStrike = -1;
-char volatile noteToProcess = -1;
+char volatile noteToStrike = 0;
+char volatile noteToProcess = 0;
 
 char volatile tasks[MAX_NOTES];
 char volatile taskCount = 0;
 char volatile taskCost = 0;
 
-char volatile otherBotLocation = -1;
-char volatile otherBotMovingTo = -1;
 char volatile otherBotTaskCost = 0;
 
 char volatile notesReceived = 0;
@@ -789,9 +787,13 @@ char volatile notesReceived = 0;
 #ifdef MASTER
 char volatile otherBotLastTaskIndex=13;
 int botloc=1;
+char volatile otherBotLocation = 13;
+char volatile otherBotMovingTo = 13;
 #else
 char volatile otherBotLastTaskIndex=1;
 int botloc=13;
+char volatile otherBotLocation = 1;
+char volatile otherBotMovingTo = 1;
 #endif
 
 
@@ -1011,12 +1013,13 @@ void inline uart0_init(void)
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
-int thresh=0x23; // Theshold Values for IR sensors
+int thresh=0x46; // Theshold Values for IR sensors
 int node[48][4]; // Possible node connections for each and every node
 int angle[48][4];   // Angle of orientation of a node from a paritcular node with respect to the xy plane
 int cost[48];
 int botang=90;
 
+int speed=130;
 
 int taskitr=0;  // Task Iterating Variable
 
@@ -1031,6 +1034,7 @@ unsigned char Left_white_line = 0;
 unsigned char Center_white_line = 0;
 unsigned char Right_white_line = 0;
 unsigned char Front_IR_Sensor = 0;
+
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1157,7 +1161,7 @@ void print_sensor(char row, char coloumn,unsigned char channel)
 {
 	
 	ADC_Value = ADC_Conversion(channel);
-	//lcd_print(row, coloumn, ADC_Value, 3);
+	lcd_print(row, coloumn, ADC_Value, 3);
 }
 
 //Function for velocity control
@@ -1273,7 +1277,7 @@ void angle_rotate(unsigned int Degrees)
 		if((ShaftCountRight >= ReqdShaftCountInt) | (ShaftCountLeft >= ReqdShaftCountInt))
 		break;
 	}
-	stop(); //Stop robot
+	//stop(); //Stop robot
 }
 
 
@@ -1340,7 +1344,7 @@ void linear_distance_mm(unsigned int DistanceInMM)
 void forward_mm(unsigned int DistanceInMM)
 {
 	forward();
-	velocity(90,90);
+	velocity(speed,speed);
 	linear_distance_mm(DistanceInMM);
 }
 
@@ -1366,7 +1370,7 @@ void costplan(int note_loc[])    // Cost planning Function
 			cost[note_loc[j]-1]=0;
 			k=k+1;
 			list[k]=note_loc[j];   // It is the list of nodes to explore
-			tmploc[note_loc[j]-1]=1;  // each node which is added to the list is marked with 1
+			tmploc[note_loc[j]-1]=1;  // each node added to the list is marked with 1
 		}
 	}
 	
@@ -1398,7 +1402,7 @@ void costplan(int note_loc[])    // Cost planning Function
 				
 			}
 		}
-	}while(list[0]!=-1 && k!=-1);
+	}while(list[0]!=-1 || k!=-1);
 }
 
 void rotate(int turnang)
@@ -1406,18 +1410,22 @@ void rotate(int turnang)
 	if(turnang<0)
 	{
 		turnang=-turnang;
-		right_degrees(turnang-25);
+		right_degrees(turnang-20);
 	}
 	else
 	{
-		left_degrees(turnang-25);
+		left_degrees(turnang-20);
 	}
 	while(1)
 	{
+		velocity(150,150);
 		Center_white_line = ADC_Conversion(2);
-		if(Center_white_line>0x78)
-		break;
+		print_sensor(1,5,2);
+		if(Center_white_line>thresh)
+			break;
 	}
+	//velocity(0,0);
+	stop();
 }
 
 int move(int n)
@@ -1431,8 +1439,11 @@ int move(int n)
 	}
 	botang=angle[botloc-1][n];
 	forward();
+	int flag=0;
+	ShaftCountRight=0;
 	while(1)
 	{
+		flag=0;
 		Left_white_line = ADC_Conversion(3);	//Getting data of Left WL Sensor
 		Center_white_line = ADC_Conversion(2);	//Getting data of Center WL Sensor
 		Right_white_line = ADC_Conversion(1);	//Getting data of Right WL Sensor
@@ -1441,47 +1452,49 @@ int move(int n)
 		print_sensor(1,1,3);	//Prints value of White Line Sensor1
 		print_sensor(1,5,2);	//Prints Value of White Line Sensor2
 		print_sensor(1,9,1);	//Prints Value of White Line Sensor3
+		print_sensor(1,13,6);	//Front ir sensor Value
 		
-		ShaftCountRight=0;
 		
-		if(Front_IR_Sensor>0xf0)
+		if(Front_IR_Sensor>0xff)
 		{
 			rotate(180);
 			botang=botang-180-turnang;
 			if(botang<0)
 			botang+=360;
 			suc=0;
+			flag=1;
 		}
-		else if(Center_white_line>thresh && (Left_white_line>thresh || Right_white_line>thresh) && ShaftCountRight>10)
+		if(Center_white_line>thresh && (Left_white_line>thresh || Right_white_line>thresh) && ShaftCountRight>10 && flag==0)
 		{
 			forward();
 			velocity(0,0);
-			//lcd_print(2,1,100,3);
+			lcd_print(2,1,100,3);
 			break;
 		}
 		else if(Left_white_line>thresh)
 		{
 			//flag=1;
 			forward();
-			//lcd_print(2,1,1,3);
-			velocity(0,90);
+			lcd_print(2,1,1,3);
+			velocity(0,speed);
 		}
 		else if(Right_white_line>thresh)
 		{
 			//flag=1;
 			forward();
-			//lcd_print(2,1,2,3);
-			velocity(90,0);
+			lcd_print(2,1,2,3);
+			velocity(speed,0);
 		}
-		else if(Center_white_line>0x78)
+		else if(Center_white_line>thresh)
 		{
-			velocity(130,130);
-			//lcd_print(2,1,0,3);
+			forward();
+			velocity(speed,speed);
+			lcd_print(2,1,0,3);
 			//flag=1;
 		}
-		else if(Center_white_line<thresh && Left_white_line<thresh && Right_white_line<thresh)
+		else
 		{
-			velocity(90,90);
+			velocity(speed,speed);
 		}
 	}
 	return suc;
@@ -1514,16 +1527,24 @@ int main()
 	init_devices();
 	PORTJ = 0x00;
 	notesReceived = 0;
-lcd_string("Waiting...");
+	lcd_string("Waiting...");
 	while(!notesReceived);
-lcd_string("Received!");
+	lcd_clear();
+	lcd_string("Received!");
 	PORTJ = 0xFF;
 	#ifdef MASTER
 	SendNotesToSlave();
 	PORTJ = 0x0F;
-lcd_string("Sent!");
+	lcd_clear();
+	lcd_string("Sent!");
 	#endif
-	
+	int i=0;
+	for(i=0;i<noteCount;i++)
+	{
+		lcd_print(2,1,(int)notes[i],2);
+		_delay_ms(1000);
+	}
+	lcd_clear();
 	while(notes[(int)noteToStrike]!=0)
 	{
 		if(taskCount==taskitr)	// If the bot has traversed all Tasks in the list
@@ -1549,23 +1570,25 @@ lcd_string("Sent!");
 		{	int taskDone=0;
 			int i,minCost,nxtNode,pos;
 			costplan(nodesnear[(int)notes[(int)tasks[taskitr]]-1]);
-			if(cost[botloc-1]==0)
-			taskDone=1;       // In Case the Bot is Already in the Dest Node.
+			lcd_print(2,12,(int)notes[(int)tasks[taskitr]],2);
+			
 			while(cost[botloc-1]!=0)
 			{
+				lcd_print(2,5,botloc,2);
 				minCost=cost[node[botloc-1][0]];
 				nxtNode=node[botloc-1][0];
 				pos=0;
 				for(i=1;i<4;i++)
 				{
 					if(node[botloc-1][i]!=0)
-					if(cost[node[botloc-1][i]]<minCost)
-					{
-						minCost=cost[node[botloc-1][i]];
-						nxtNode=node[botloc-1][i];
-						pos=i;
-					}
+						if(cost[node[botloc-1][i]]<minCost)
+						{
+							minCost=cost[node[botloc-1][i]];
+							nxtNode=node[botloc-1][i];
+							pos=i;
+						}
 				}
+				lcd_print(2,8,nxtNode,2);
 				while(otherBotMovingTo==nxtNode);
 				SendNextNode(nxtNode);
 				//while(otherBotLocation==nxtNode);
@@ -1573,8 +1596,8 @@ lcd_string("Sent!");
 				if(taskDone==0)
 				{
 					for(i=0;i<4;i++)
-					if(node[node[botloc-1][pos]-1][i]==nxtNode)
-					node[node[botloc-1][pos]-1][i]=0;
+						if(node[node[botloc-1][pos]-1][i]==nxtNode)
+							node[node[botloc-1][pos]-1][i]=0;
 					node[botloc-1][pos]=0;
 					break;
 				}
@@ -1584,6 +1607,7 @@ lcd_string("Sent!");
 					SendNodeReached(botloc);
 				}
 			}
+			
 			if(cost[botloc-1]==0)
 			{
 				while(noteToStrike!=tasks[taskitr]);
@@ -1596,7 +1620,6 @@ lcd_string("Sent!");
 				SendNoteStruck(noteToStrike);
 			}
 		}
-		
 	}
 	BotEnded();
 	while(botEnd!=1);
