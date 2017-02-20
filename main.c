@@ -1575,7 +1575,7 @@ int main()
 			while(cost[botloc-1]!=0)
 			{
 				lcd_print(2,5,botloc,2);
-				minCost=cost[node[botloc-1][0]];
+				minCost=cost[node[botloc-1][0] -1];
 				nxtNode=node[botloc-1][0];
 				pos=0;
 				for(i=1;i<4;i++)
