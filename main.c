@@ -1641,7 +1641,7 @@ int main()
 	}
 	lcd_clear();
 	
-	while(notes[(int)noteToStrike]!=0 || taskitr!=taskCount)
+	while(notes[(int)noteToStrike]!=0 && taskitr!=taskCount)
 	{	
 		printf("Current Task Node=%d \n",(int)notes[(int)tasks[taskitr]]);
 		int taskDone=0;
