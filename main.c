@@ -1,5 +1,10 @@
+#include <stdio.h>
+
 //Uncomment if this robot receives data from PC
-//#define MASTER
+#define MASTER
+
+#define loop_until_bit_is_set(sfr,bit) \
+do { } while (bit_is_clear(sfr, bit))
 
 #define F_CPU 14745600UL
 
@@ -784,14 +789,18 @@ char volatile otherBotTaskCost = 0;
 
 char volatile notesReceived = 0;
 
+int otherBotTask[MAX_NOTES]={};
+int	otherBotTaskCount=0;
+int botLastIndex = 1;
+
 #ifdef MASTER
 char volatile otherBotLastTaskIndex=13;
-int botloc=1;
+int volatile botloc=1;
 char volatile otherBotLocation = 13;
 char volatile otherBotMovingTo = 13;
 #else
 char volatile otherBotLastTaskIndex=1;
-int botloc=13;
+int  volatile botloc=13;
 char volatile otherBotLocation = 1;
 char volatile otherBotMovingTo = 1;
 #endif
@@ -799,7 +808,7 @@ char volatile otherBotMovingTo = 1;
 
 char volatile lastCommand = -1;
 
-int botEnd = 0;
+int volatile botEnd = 0;
 
 //ZigBee
 ISR(USART0_RX_vect)
@@ -901,24 +910,7 @@ void inline SendByteToSlave(unsigned char data)
 	UDR0 = data;
 }
 
-#ifdef MASTER
-//send data to slave through ZigBee
-void inline SendNotesToSlave()
-{
-	SendByteToSlave(RC_NOT_S);
-	//lcd_string("Start");
-	_delay_ms(1000);
-	int i;
-	for(i = 0; i<noteCount; i++)
-	{
-		SendByteToSlave(DATA(notes[i]));
-		//lcd_print(1,1,(int)notes[i],3);
-		_delay_ms(1000);
-	}
-	SendByteToSlave(RC_NOT_E);
-	_delay_ms(1000);
-}
-#endif
+
 
 //send this task to slave
 void inline SendTaskToSlave(char task)
@@ -978,6 +970,51 @@ void inline BotEnded()
 	SendByteToSlave(END_TASK);
 	SendByteToSlave(DATA(0));
 }
+
+// Debugging
+void inline Debug(char * data)
+{
+	int i=0;
+	while(*(data+i)!='\0')
+	{
+		while(!(UCSR2A & (1<<UDRE2)));
+		UDR2 = *(data + i);
+		i++;
+	}
+	while(!(UCSR2A & (1<<UDRE2)));
+	UDR2 = '\n';
+}
+
+#ifdef MASTER
+//send data to slave through ZigBee
+void inline SendNotesToSlave()
+{
+	SendByteToSlave(RC_NOT_S);
+	//lcd_string("Start");
+	//_delay_ms(300);
+	int i;
+	for(i = 0; i<noteCount; i++)
+	{
+		SendByteToSlave(DATA(notes[i]));
+		//lcd_print(1,1,(int)notes[i],3);
+		//_delay_ms(300);
+	}
+	SendByteToSlave(RC_NOT_E);
+	//_delay_ms(1000);
+}
+void inline SendTaskArray()
+{
+	int i;
+	for(i = 0; i<otherBotTaskCount; i++)
+	{
+		SendTaskToSlave(otherBotTask[i]);
+	}
+}
+
+#endif
+
+
+
 /*
 Function To Initialize UART2 - PC - USB
 desired baud rate:9600
@@ -1019,7 +1056,7 @@ int angle[48][4];   // Angle of orientation of a node from a paritcular node wit
 int cost[48];
 int botang=90;
 
-int speed=130;
+int speed=100;
 
 int taskitr=0;  // Task Iterating Variable
 
@@ -1430,6 +1467,7 @@ void rotate(int turnang)
 
 int move(int n)
 {
+	velocity(0,0);
 	int suc=1,turnang;
 	turnang=angle[botloc-1][n]-botang;
 	if(fabs(turnang)>45)
@@ -1449,10 +1487,10 @@ int move(int n)
 		Right_white_line = ADC_Conversion(1);	//Getting data of Right WL Sensor
 		Front_IR_Sensor = ADC_Conversion(6);
 		
-		print_sensor(1,1,3);	//Prints value of White Line Sensor1
-		print_sensor(1,5,2);	//Prints Value of White Line Sensor2
-		print_sensor(1,9,1);	//Prints Value of White Line Sensor3
-		print_sensor(1,13,6);	//Front ir sensor Value
+		lcd_print(1,1,(int)Left_white_line,3);	//Prints value of White Line Sensor1
+		lcd_print(1,5,(int)Center_white_line,3);	//Prints Value of White Line Sensor2
+		lcd_print(1,9,(int)Right_white_line,3);	//Prints Value of White Line Sensor3
+		lcd_print(1,12,(int)Front_IR_Sensor,3);	//Front ir sensor Value
 		
 		
 		if(Front_IR_Sensor>0xff)
@@ -1503,23 +1541,65 @@ int LastLocation;
 int BotEndLocation(int loc)
 {
 	int i;
-	if(cost[loc-1]==0)
+	if (cost[loc - 1] == 0)
 	{
-		LastLocation=loc;
+		LastLocation = loc;
 		return LastLocation;
 	}
-	int mCost=cost[node[loc-1][0]];
-	int pos=0;
-	for(i=1;i<4;i++)
+	int mCost = cost[node[loc - 1][0] - 1];
+	int pos = 0;
+	for (i = 1; i<4; i++)
 	{
-		if(cost[node[loc-1][i]]<mCost)
-		{
-			mCost=cost[node[loc-1][i]];
-			pos=i;
-		}
+		if (node[loc - 1][i]!=0)
+			if (cost[node[loc - 1][i] - 1]<mCost)
+			{
+				mCost = cost[node[loc - 1][i] - 1];
+				pos = i;
+			}
 	}
-	return BotEndLocation(node[loc-1][pos]);
+	return BotEndLocation(node[loc - 1][pos]);
 }
+
+////////////////////////////////////////////////////////
+//PC Debug
+uart_putchar(char c, FILE *stream)
+{
+	//if(c=='\n')
+	//uart_putchar('\r', stream);
+	loop_until_bit_is_set(UCSR2A, UDRE2);
+	UDR2 = c;
+}
+
+FILE uart_debug = FDEV_SETUP_STREAM(uart_putchar, NULL, _FDEV_SETUP_WRITE);
+///////////////////////////////////////////////////////
+
+
+void processNotes()
+{
+	int noteToProcess=0;
+	while(noteToProcess!=noteCount)
+	{
+		costplan(nodesnear[(int)notes[(int)noteToProcess]-1]);
+		if((taskCost+cost[botLastIndex-1])>((int)otherBotTaskCost+cost[(int)otherBotLastTaskIndex-1]))
+		{
+			otherBotTaskCost+=cost[otherBotLastTaskIndex-1];
+			otherBotLastTaskIndex=BotEndLocation((int)otherBotLastTaskIndex);
+			otherBotTask[otherBotTaskCount]=noteToProcess;
+			otherBotTaskCount++;
+		}
+		else
+		{
+			taskCost+=cost[botLastIndex-1];
+			botLastIndex=BotEndLocation(botLastIndex);
+			tasks[(int)taskCount]=noteToProcess;
+			taskCount++;
+		}
+		noteToProcess++;
+		
+	}
+	
+}
+
 
 int main()
 {
@@ -1532,12 +1612,27 @@ int main()
 	lcd_clear();
 	lcd_string("Received!");
 	PORTJ = 0xFF;
+	
 	#ifdef MASTER
 	SendNotesToSlave();
 	PORTJ = 0x0F;
 	lcd_clear();
 	lcd_string("Sent!");
+	lcd_clear();
+	lcd_string("Sending Tasks");
+	processNotes();
+	lcd_clear();
+	lcd_string("Processed");
+	SendTaskArray();
+	lcd_clear();
+	lcd_string("Task Sent");
 	#endif
+
+	while(taskCount==0);
+	
+	//PC Debug (printf)
+	stdout = &uart_debug;
+		
 	int i=0;
 	for(i=0;i<noteCount;i++)
 	{
@@ -1545,82 +1640,66 @@ int main()
 		_delay_ms(1000);
 	}
 	lcd_clear();
-	while(notes[(int)noteToStrike]!=0)
-	{
-		if(taskCount==taskitr)	// If the bot has traversed all Tasks in the list
+	
+	while(notes[(int)noteToStrike]!=0 || taskitr!=taskCount)
+	{	
+		printf("Current Task Node=%d \n",(int)notes[(int)tasks[taskitr]]);
+		int taskDone=0;
+		int i,minCost,nxtNode,pos;
+		costplan(nodesnear[(int)notes[(int)tasks[taskitr]]-1]);
+		lcd_print(2,12,(int)notes[(int)tasks[taskitr]],2);
+		printf("Cost Planned for task =%d Cost=%d",(int)tasks[taskitr],cost[botloc-1]);
+		while(cost[botloc-1]!=0)
 		{
-			costplan(nodesnear[(int)notes[(int)noteToProcess]-1]);	// Calculate cost for the next Note to process for the full map
-			if(cost[botloc-1]>((int)otherBotTaskCost+cost[(int)otherBotLastTaskIndex])) // Give the Task to the Bot which has less Total Cost
+			lcd_print(2,5,botloc,2);
+			minCost=cost[node[botloc-1][0]-1];
+			nxtNode=node[botloc-1][0];
+			pos=0;
+			for(i=1;i<4;i++)
 			{
-				SendTaskToSlave((int)noteToProcess);			// Send the Task to the other bot if it has less cost
-				SendTaskCost(cost[(int)otherBotLastTaskIndex]);		// Send the cost for the processed task
-				otherBotLastTaskIndex=BotEndLocation((int)otherBotLastTaskIndex);	// Update the other bot last index
+				if(node[botloc-1][i]!=0)
+					if(cost[node[botloc-1][i]-1]<minCost)
+					{
+						minCost=cost[node[botloc-1][i]-1];
+						nxtNode=node[botloc-1][i];
+						pos=i;
+					}
+			}
+			lcd_print(2,8,nxtNode,2);
+			while((int)otherBotMovingTo==nxtNode);
+			SendNextNode(nxtNode);
+			//while(otherBotLocation==nxtNode);
+			taskDone=move(pos);
+			if(taskDone==0)
+			{
+				for(i=0;i<4;i++)
+					if(node[node[botloc-1][pos]-1][i]==nxtNode)
+						node[node[botloc-1][pos]-1][i]=0;
+				node[botloc-1][pos]=0;
+				break;
 			}
 			else
 			{
-				tasks[(int)taskCount]=(int)noteToProcess;	// If the bot has less cost than the other bot add the task to the list
-				taskCost+=cost[botloc-1];		//
-				taskCount++;
-				SendLastIndex((int)noteToProcess);
-				SendLastIndex((int)BotEndLocation(botloc));
+
+				botloc=node[botloc-1][pos];
+				SendNodeReached(botloc);
 			}
-			NoteProcessed(noteToProcess);
 		}
-		else
-		{	int taskDone=0;
-			int i,minCost,nxtNode,pos;
-			costplan(nodesnear[(int)notes[(int)tasks[taskitr]]-1]);
-			lcd_print(2,12,(int)notes[(int)tasks[taskitr]],2);
 			
-			while(cost[botloc-1]!=0)
-			{
-				lcd_print(2,5,botloc,2);
-				minCost=cost[node[botloc-1][0] -1];
-				nxtNode=node[botloc-1][0];
-				pos=0;
-				for(i=1;i<4;i++)
-				{
-					if(node[botloc-1][i]!=0)
-						if(cost[node[botloc-1][i]]<minCost)
-						{
-							minCost=cost[node[botloc-1][i]];
-							nxtNode=node[botloc-1][i];
-							pos=i;
-						}
-				}
-				lcd_print(2,8,nxtNode,2);
-				while(otherBotMovingTo==nxtNode);
-				SendNextNode(nxtNode);
-				//while(otherBotLocation==nxtNode);
-				taskDone=move(pos);
-				if(taskDone==0)
-				{
-					for(i=0;i<4;i++)
-						if(node[node[botloc-1][pos]-1][i]==nxtNode)
-							node[node[botloc-1][pos]-1][i]=0;
-					node[botloc-1][pos]=0;
-					break;
-				}
-				else
-				{
-					botloc=node[botloc-1][pos];
-					SendNodeReached(botloc);
-				}
-			}
-			
-			if(cost[botloc-1]==0)
-			{
-				while(noteToStrike!=tasks[taskitr]);
-				// Servo Motor Control
-				// Strike the Note
-				buzzer_on();
-				_delay_ms(500);
-				buzzer_off();
-				taskitr++;
-				SendNoteStruck(noteToStrike);
-			}
+		if(cost[botloc-1]==0)
+		{
+			while(noteToStrike!=tasks[taskitr]);
+			// Servo Motor Control
+			// Strike the Note
+			printf("Reached Destination node=%d \n",(int)notes[(int)tasks[taskitr]]);
+			buzzer_on();
+			_delay_ms(500);
+			buzzer_off();
+			taskitr++;
+			SendNoteStruck(noteToStrike);
 		}
 	}
+	printf("Gonna be Out!!!\n");
 	BotEnded();
 	while(botEnd!=1);
 	buzzer_on();
