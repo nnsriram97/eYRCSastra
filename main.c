@@ -1,7 +1,7 @@
 #include <stdio.h>
 
 //Uncomment if this robot receives data from PC
-#define MASTER
+//#define MASTER
 
 #define loop_until_bit_is_set(sfr,bit) \
 do { } while (bit_is_clear(sfr, bit))
@@ -255,16 +255,87 @@ int nodesnear[33][6]={
 	{22,0,0,0,0,0},
 	{23,0,0,0,0,0},
 	{24,0,0,0,0,0},
-	{1,35,0,0,0,0},
-	{25,26,35,36,43,44},
-	{5,26,0,0,0,0},
-	{9,27,0,0,0,0},
-	{27,28,29,30,45,46},
-	{13,30,0,0,0,0},
-	{17,31,0,0,0,0},
-	{31,32,33,34,47,48},
-	{21,34,0,0,0,0},
+	{1,0,0,0,0,0},
+	{25,36,43,44,0,0},
+	{5,0,0,0,0,0},
+	{9,0,0,0,0,0},
+	{28,29,45,46,0,0},
+	{13,0,0,0,0,0},
+	{17,0,0,0,0,0},
+	{32,33,47,48,0,0},
+	{21,0,0,0,0,0},
 };   // Nodes to which each and every note is connected
+
+int noteangles[33][2]={
+	{90,255},
+	{75,240},
+	{60,225},
+	{45,210},
+	{30,195},
+	{15,180},
+	{0,165},
+	{345,150},
+	{330,135},
+	{315,120},
+	{300,105},
+	{285,90},
+	{270,75},
+	{255,60},
+	{240,45},
+	{225,30},
+	{210,15},
+	{195,0},
+	{180,345},
+	{165,330},
+	{150,315},
+	{135,300},
+	{120,90},
+	{105,285},
+	{255,90},
+	{240,60},
+	{195,30},
+	{135,330},
+	{120,300},
+	{75,270},
+	{15,210},
+	{0,180},
+	{315,150},
+};
+
+int movToDestNote[33][4]={
+	{1,0,0,0},
+	{2,0,0,0},
+	{4,0,0,0},
+	{4,0,0,0},
+	{5,0,0,0},
+	{6,0,0,0},
+	{8,0,0,0},
+	{8,0,0,0},
+	{9,0,0,0},
+	{10,0,0,0},
+	{12,0,0,0},
+	{12,0,0,0},
+	{13,0,0,0},
+	{14,0,0,0},
+	{16,0,0,0},
+	{16,0,0,0},
+	{17,0,0,0},
+	{18,0,0,0},
+	{20,0,0,0},
+	{20,0,0,0},
+	{21,0,0,0},
+	{22,0,0,0},
+	{24,0,0,0},
+	{24,0,0,0},
+	{1,0,0,0},
+	{36,25,44,43},
+	{5,0,0,0},
+	{9,0,0,0},
+	{13,0,0,0},
+	{17,0,0,0},
+	{33,32,48,47},
+	{21,0,0,0},
+};
 
 int angle[48][4], node[48][4];
 void declare_constants()
@@ -1050,13 +1121,14 @@ void inline uart0_init(void)
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
-int thresh=0x46; // Theshold Values for IR sensors
+int thresh=35; // Theshold Values for IR sensors
 int node[48][4]; // Possible node connections for each and every node
 int angle[48][4];   // Angle of orientation of a node from a paritcular node with respect to the xy plane
 int cost[48];
 int botang=90;
 
 int speed=100;
+int strike=0;
 
 int taskitr=0;  // Task Iterating Variable
 
@@ -1075,6 +1147,53 @@ unsigned char Front_IR_Sensor = 0;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+//Configure PORTB 5 pin for servo motor 1 operation
+void servo1_pin_config (void)
+{
+	DDRB  = DDRB | 0x20;  //making PORTB 5 pin output
+	PORTB = PORTB | 0x20; //setting PORTB 5 pin to logic 1
+}
+
+//TIMER1 initialization in 10 bit fast PWM mode  
+//prescale:256
+// WGM: 7) PWM 10bit fast, TOP=0x03FF
+// actual value: 52.25Hz 
+void timer1_init(void)
+{
+ TCCR1B = 0x00; //stop
+ TCNT1H = 0xFC; //Counter high value to which OCR1xH value is to be compared with
+ TCNT1L = 0x01;	//Counter low value to which OCR1xH value is to be compared with
+ OCR1AH = 0x03;	//Output compare Register high value for servo 1
+ OCR1AL = 0xFF;	//Output Compare Register low Value For servo 1
+ //OCR1BH = 0x03;	//Output compare Register high value for servo 2
+ //OCR1BL = 0xFF;	//Output Compare Register low Value For servo 2
+ //OCR1CH = 0x03;	//Output compare Register high value for servo 3
+ //OCR1CL = 0xFF;	//Output Compare Register low Value For servo 3
+ ICR1H  = 0x03;	
+ ICR1L  = 0xFF;
+ TCCR1A = 0xAB; /*{COM1A1=1, COM1A0=0; COM1B1=1, COM1B0=0; COM1C1=1 COM1C0=0}
+ 					For Overriding normal port functionality to OCRnA outputs.
+				  {WGM11=1, WGM10=1} Along With WGM12 in TCCR1B for Selecting FAST PWM Mode*/
+ TCCR1C = 0x00;
+ TCCR1B = 0x0C; //WGM12=1; CS12=1, CS11=0, CS10=0 (Prescaler=256)
+}
+
+//Function to rotate Servo 1 by a specified angle in the multiples of 1.86 degrees
+void servo_1(unsigned char degrees)
+{
+	float PositionPanServo = 0;
+	PositionPanServo = ((float)degrees / 1.86) + 35.0;
+	OCR1AH = 0x00;
+	OCR1AL = (unsigned char) PositionPanServo;
+}
+
+void servo_1_free (void) //makes servo 1 free rotating
+{
+	OCR1AH = 0x03;
+	OCR1AL = 0xFF; //Servo 1 off
+}
+
 
 
 void buzzer_pin_config (void)
@@ -1267,7 +1386,7 @@ void left (void) //Left wheel backward, Right wheel forward
 
 void right (void) //Left wheel forward, Right wheel backward
 {
-	motion_set(thresh);
+	motion_set(0x0A);
 }
 
 void soft_left (void) //Left wheel stationary, Right wheel forward
@@ -1315,6 +1434,7 @@ void angle_rotate(unsigned int Degrees)
 		break;
 	}
 	//stop(); //Stop robot
+	stop();
 }
 
 
@@ -1353,6 +1473,8 @@ void init_devices()
 	timer5_init();
 	lcd_set_4bit();
 	lcd_init();
+	servo1_pin_config();
+	timer1_init();
 	LED_bargraph_config();
 	sei();   // Enables the global interrupt
 }
@@ -1444,25 +1566,39 @@ void costplan(int note_loc[])    // Cost planning Function
 
 void rotate(int turnang)
 {
+	int f=0;
 	if(turnang<0)
 	{
+		f=1;
 		turnang=-turnang;
-		right_degrees(turnang-20);
+		right_degrees((turnang-30));
 	}
 	else
 	{
-		left_degrees(turnang-20);
+		left_degrees((turnang-30));
 	}
+	_delay_ms(200);
+	forward();
+	if(f==0)
+		velocity(0,50);
+	else
+		velocity(50,0);
 	while(1)
 	{
-		velocity(150,150);
-		Center_white_line = ADC_Conversion(2);
+			
+		Left_white_line = ADC_Conversion(3);	//Getting data of Left WL Sensor
+		Center_white_line = ADC_Conversion(2);	//Getting data of Center WL Sensor
+		Right_white_line = ADC_Conversion(1);	//Getting data of Right WL Sensor
 		print_sensor(1,5,2);
-		if(Center_white_line>thresh)
+		if(Center_white_line>thresh || Left_white_line>thresh || Right_white_line>thresh)
+		{	
+			stop();
 			break;
+		}
+		
+		
 	}
 	//velocity(0,0);
-	stop();
 }
 
 int move(int n)
@@ -1476,6 +1612,21 @@ int move(int n)
 		rotate(turnang);
 	}
 	botang=angle[botloc-1][n];
+	
+	if(strike==1)
+	{
+		if(noteangles[(int)notes[(int)noteToStrike]-1][0]==botang)
+			servo_1(0);//Strike Left
+		else
+			servo_1(180);//Strike Right
+		
+		// Servo Motor Control
+		// Strike the Note
+		_delay_ms(300);
+		servo_1(90);
+		strike=0;
+	}
+	
 	forward();
 	int flag=0;
 	ShaftCountRight=0;
@@ -1496,13 +1647,16 @@ int move(int n)
 		if(Front_IR_Sensor>0xff)
 		{
 			rotate(180);
-			botang=botang-180-turnang;
-			if(botang<0)
-			botang+=360;
+			for(int j=0;j<4;j++)
+				if(node[node[botloc-1][n]-1][j]==botloc)
+				{
+					botang=angle[node[botloc-1][n]-1][j];
+					break;
+				}
 			suc=0;
 			flag=1;
 		}
-		if(Center_white_line>thresh && (Left_white_line>thresh || Right_white_line>thresh) && ShaftCountRight>10 && flag==0)
+		if(Center_white_line>thresh && (Left_white_line>thresh || Right_white_line>thresh) && ShaftCountRight>20 && flag==0)
 		{
 			forward();
 			velocity(0,0);
@@ -1605,6 +1759,7 @@ int main()
 {
 	declare_constants();
 	init_devices();
+	servo_1(90);
 	PORTJ = 0x00;
 	notesReceived = 0;
 	lcd_string("Waiting...");
@@ -1689,8 +1844,45 @@ int main()
 		if(cost[botloc-1]==0)
 		{
 			while(noteToStrike!=tasks[taskitr]);
-			// Servo Motor Control
-			// Strike the Note
+			if(noteangles[(int)notes[(int)noteToStrike]-1][0]==botang || noteangles[(int)notes[(int)noteToStrike]-1][1]==botang)
+			{
+				if(noteangles[(int)notes[(int)noteToStrike]-1][0]==botang)
+					servo_1(0); // Strike Left
+				else
+					servo_1(180);//Strike Right
+					
+				_delay_ms(300);
+				servo_1(90);
+				// Servo Motor Control
+				// Strike the Note
+			}
+			else
+			{
+				int tpos=0,p=0;
+				for(int j=0;j<4;j++)
+				{
+					if(nodesnear[(int)notes[(int)noteToStrike]-1][j]!=0 && botloc==nodesnear[(int)notes[(int)noteToStrike]-1][j])
+					{
+						tpos=j;
+						break;
+					}
+				}
+				for(int j=0;j<4;j++)
+				{
+					if(node[botloc-1][j]==movToDestNote[(int)notes[(int)noteToStrike]-1][tpos])
+					{
+						p=j;
+						break;
+					}
+				}
+				strike=1;
+				taskDone=move(p);
+				if(taskDone==1)
+				{
+					botloc=node[botloc-1][p];
+					SendNodeReached(botloc);
+				}
+			}
 			printf("Reached Destination node=%d \n",(int)notes[(int)tasks[taskitr]]);
 			buzzer_on();
 			_delay_ms(500);
