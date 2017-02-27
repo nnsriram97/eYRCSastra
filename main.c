@@ -1,7 +1,7 @@
 #include <stdio.h>
 
 //Uncomment if this robot receives data from PC
-//#define MASTER
+#define MASTER
 
 #define loop_until_bit_is_set(sfr,bit) \
 do { } while (bit_is_clear(sfr, bit))
@@ -331,6 +331,7 @@ int movToDestNote[33][4]={
 	{36,25,44,43},
 	{5,0,0,0},
 	{9,0,0,0},
+	{29,28,46,45},
 	{13,0,0,0},
 	{17,0,0,0},
 	{33,32,48,47},
@@ -1569,28 +1570,54 @@ void rotate(int turnang)
 	int f=0;
 	if(turnang<0)
 	{
-		f=1;
 		turnang=-turnang;
-		right_degrees((turnang-30));
+		if(turnang>180)
+		{
+			turnang=360-turnang;
+			left_degrees((turnang-20));
+		}
+		else
+		{
+			f=1;
+			right_degrees((turnang-20));
+		}
 	}
 	else
 	{
-		left_degrees((turnang-30));
+		if(turnang>180)
+		{
+			f=1;
+			turnang=360-turnang;
+			right_degrees((turnang-20));
+		}
+		else
+		{
+			left_degrees((turnang-20));
+		}
 	}
-	_delay_ms(200);
-	forward();
-	if(f==0)
-		velocity(0,50);
-	else
-		velocity(50,0);
+	stop();
+	_delay_ms(50);
 	while(1)
 	{
-			
 		Left_white_line = ADC_Conversion(3);	//Getting data of Left WL Sensor
 		Center_white_line = ADC_Conversion(2);	//Getting data of Center WL Sensor
 		Right_white_line = ADC_Conversion(1);	//Getting data of Right WL Sensor
-		print_sensor(1,5,2);
-		if(Center_white_line>thresh || Left_white_line>thresh || Right_white_line>thresh)
+		
+		lcd_print(1,1,(int)Left_white_line,3);	//Prints value of White Line Sensor1
+		lcd_print(1,5,(int)Center_white_line,3);	//Prints Value of White Line Sensor2
+		lcd_print(1,9,(int)Right_white_line,3);	//Prints Value of White Line Sensor3
+		//forward();
+		if(f==0)
+		{
+			left();
+			velocity(100,100);
+		}
+		else
+		{
+			right();
+			velocity(100,100);
+		}
+		if(Center_white_line>55 || Left_white_line>120 || Right_white_line>120)
 		{	
 			stop();
 			break;
@@ -1599,6 +1626,38 @@ void rotate(int turnang)
 		
 	}
 	//velocity(0,0);
+}
+
+void servoStrike(int side)
+{
+	if(!side)
+	{
+		for(int i=90;i>=0;i--)
+		{
+			servo_1(i);
+			_delay_ms(30);
+		}
+		_delay_ms(100);
+		for(int i=0;i<=90;i++)
+		{
+			servo_1(i);
+			_delay_ms(30);
+		}
+	}
+	else
+	{
+		for(int i=90; i<=180; i++)
+		{
+			servo_1(i);
+			_delay_ms(30);
+		}
+		_delay_ms(100);
+		for(int i=180;i>=90;i--)
+		{
+			servo_1(i);
+			_delay_ms(30);
+		}
+	}
 }
 
 int move(int n)
@@ -1616,20 +1675,20 @@ int move(int n)
 	if(strike==1)
 	{
 		if(noteangles[(int)notes[(int)noteToStrike]-1][0]==botang)
-			servo_1(0);//Strike Left
+			servoStrike(0);//Strike Left
 		else
-			servo_1(180);//Strike Right
+			servoStrike(1);//Strike Right
 		
 		// Servo Motor Control
 		// Strike the Note
-		_delay_ms(300);
-		servo_1(90);
 		strike=0;
 	}
 	
 	forward();
 	int flag=0;
 	ShaftCountRight=0;
+	while(ShaftCountRight<10)
+		velocity(100,100);
 	while(1)
 	{
 		flag=0;
@@ -1684,9 +1743,13 @@ int move(int n)
 			lcd_print(2,1,0,3);
 			//flag=1;
 		}
+		else if(Left_white_line>Right_white_line)
+		{
+			velocity(0,speed);
+		}
 		else
 		{
-			velocity(speed,speed);
+			velocity(speed,0);
 		}
 	}
 	return suc;
@@ -1822,8 +1885,8 @@ int main()
 			}
 			lcd_print(2,8,nxtNode,2);
 			while((int)otherBotMovingTo==nxtNode);
+			while((int)otherBotLocation==nxtNode);
 			SendNextNode(nxtNode);
-			//while(otherBotLocation==nxtNode);
 			taskDone=move(pos);
 			if(taskDone==0)
 			{
@@ -1847,12 +1910,10 @@ int main()
 			if(noteangles[(int)notes[(int)noteToStrike]-1][0]==botang || noteangles[(int)notes[(int)noteToStrike]-1][1]==botang)
 			{
 				if(noteangles[(int)notes[(int)noteToStrike]-1][0]==botang)
-					servo_1(0); // Strike Left
+					servoStrike(0); // Strike Left
 				else
-					servo_1(180);//Strike Right
+					servoStrike(1);//Strike Right
 					
-				_delay_ms(300);
-				servo_1(90);
 				// Servo Motor Control
 				// Strike the Note
 			}
@@ -1872,10 +1933,14 @@ int main()
 					if(node[botloc-1][j]==movToDestNote[(int)notes[(int)noteToStrike]-1][tpos])
 					{
 						p=j;
+						nxtNode=node[botloc-1][j];
 						break;
 					}
 				}
 				strike=1;
+				while((int)otherBotMovingTo==nxtNode);
+				while((int)otherBotLocation==nxtNode);
+				SendNextNode(nxtNode);
 				taskDone=move(p);
 				if(taskDone==1)
 				{
