@@ -849,7 +849,9 @@ void declare_constants()
 #define BACKTODAT(a) a & 0x7F
 
 char volatile notes[MAX_NOTES];
+char volatile notes2[MAX_NOTES];
 char volatile noteCount = 0;
+char volatile noteCount2 = 0;
 char volatile noteToStrike = 0;
 char volatile noteToProcess = 0;
 
@@ -860,6 +862,7 @@ char volatile taskCost = 0;
 char volatile otherBotTaskCost = 0;
 
 char volatile notesReceived = 0;
+char volatile notesReceived2 = 0;
 
 int otherBotTask[MAX_NOTES]={};
 int	otherBotTaskCount=0;
@@ -954,22 +957,37 @@ ISR(USART0_RX_vect)
 ISR(USART2_RX_vect)
 {
 	char data = UDR2;
-	//indicate end of notes by \n
-	if(!(data == 255))
+	if(!notesReceived)
 	{
-		//is a note
-		notes[(int)noteCount] = data;
-		noteCount++;
-		PORTJ = noteCount;
+	//indicate end of notes by \n
+		if(data != 255)
+		{
+			//is a note
+			notes[(int)noteCount] = data;
+			noteCount++;
+			PORTJ = noteCount;
+		}
+		else
+		{
+			PORTJ = 0;
+			notesReceived = 1;
+		}
 	}
 	else
 	{
-		//all notes received
-		//UDR2 = 'D';
-		//while(!(UCSR2A & (1 << UDRE2)));
-		//UDR2 = '\n';
-		PORTJ = 0;
-		notesReceived = 1;
+		if(data != 255)
+		{
+			//is a note
+			notes2[(int)noteCount2] = data;
+			noteCount2++;
+			PORTJ = noteCount2;
+		}
+		else
+		{
+			PORTJ = 0;
+			notesReceived2 = 1;
+		}
+		
 	}
 }
 #endif
@@ -1826,7 +1844,7 @@ int main()
 	PORTJ = 0x00;
 	notesReceived = 0;
 	lcd_string("Waiting...");
-	while(!notesReceived);
+	while(!notesReceived2);
 	lcd_clear();
 	lcd_string("Received!");
 	PORTJ = 0xFF;
