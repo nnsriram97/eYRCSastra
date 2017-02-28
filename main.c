@@ -832,7 +832,10 @@ void declare_constants()
 //Comm commands
 #define RC_NOT_S 1		//Send before starting to tx notes
 #define RC_NOT_E 2		//Send on end of tx of notes
+#define RC_NOT_S2 11	//notesReceived2 Start
+#define RC_NOT_E2 12	//notesReceived2 End
 #define ADD_TASK 3		//ADD_TASK[15:8] | TASK_NO[7:0]
+#define ADD_TASK2 13	//Send an index of notes2 as task2
 #define NODE_RCH 4		//NODE_RCH[15:8] | TASK_NO[7:0]
 #define NXT_NODE 5		//NXT_NODE[15:8] | NODE[7:0]
 #define NOTE_STK 6		//NOTE_STK[15:8] | NODE[7:0]
@@ -848,14 +851,15 @@ void declare_constants()
 
 #define BACKTODAT(a) a & 0x7F
 
-char volatile notes[MAX_NOTES];
-char volatile notes2[MAX_NOTES];
+char volatile notes[MAX_NOTES] = {0};
+char volatile notes2[MAX_NOTES] = {0};
 char volatile noteCount = 0;
 char volatile noteCount2 = 0;
 char volatile noteToStrike = 0;
 char volatile noteToProcess = 0;
 
 char volatile tasks[MAX_NOTES];
+char volatile tasks2[MAX_NOTES];
 char volatile taskCount = 0;
 char volatile taskCost = 0;
 
@@ -903,8 +907,21 @@ ISR(USART0_RX_vect)
 			PORTJ = noteCount;
 			break;
 			
+			case RC_NOT_S2:
+			notes2[(int)noteCount2] = data;
+			noteCount2++;
+			PORTJ = noteCount2;
+			break;
+			
 			case ADD_TASK:
 			tasks[(int)taskCount] = data;
+			tasks2[(int)taskCount] = -1;
+			taskCount++;
+			break;
+			
+			case ADD_TASK2:
+			tasks[(int)taskCount] = -1;
+			tasks2[(int)taskCount] = data;
 			taskCount++;
 			break;
 			
@@ -948,6 +965,10 @@ ISR(USART0_RX_vect)
 			case RC_NOT_E:
 			notesReceived = 1;
 			break;
+			
+			case RC_NOT_E2:
+			notesReceived2 = 1;
+			break;
 		}
 	}
 }
@@ -973,7 +994,7 @@ ISR(USART2_RX_vect)
 			notesReceived = 1;
 		}
 	}
-	else
+	else if(!notesReceived2)
 	{
 		if(data != 255)
 		{
@@ -1080,17 +1101,19 @@ void inline Debug(char * data)
 void inline SendNotesToSlave()
 {
 	SendByteToSlave(RC_NOT_S);
-	//lcd_string("Start");
-	//_delay_ms(300);
 	int i;
 	for(i = 0; i<noteCount; i++)
 	{
 		SendByteToSlave(DATA(notes[i]));
-		//lcd_print(1,1,(int)notes[i],3);
-		//_delay_ms(300);
 	}
 	SendByteToSlave(RC_NOT_E);
-	//_delay_ms(1000);
+	
+	SendByteToSlave(RC_NOT_S2);
+	for(i = 0; i<noteCount2; i++)
+	{
+		SendByteToSlave(DATA(notes2[i]));
+	}
+	SendByteToSlave(RC_NOT_E2);
 }
 void inline SendTaskArray()
 {
@@ -1683,8 +1706,10 @@ int move(int n)
 	velocity(0,0);
 	int suc=1,turnang;
 	turnang=angle[botloc-1][n]-botang;
+	int turns=0;
 	if(fabs(turnang)>45)
 	{
+		turns=1;
 		forward_mm(70);
 		rotate(turnang);
 	}
@@ -1693,9 +1718,9 @@ int move(int n)
 	if(strike==1)
 	{
 		if(noteangles[(int)notes[(int)noteToStrike]-1][0]==botang)
-			servoStrike(0);//Strike Left
+			servoStrike(1);//Strike Left
 		else
-			servoStrike(1);//Strike Right
+			servoStrike(0);//Strike Right
 		
 		// Servo Motor Control
 		// Strike the Note
@@ -1705,8 +1730,9 @@ int move(int n)
 	forward();
 	int flag=0;
 	ShaftCountRight=0;
-	while(ShaftCountRight<10)
-		velocity(100,100);
+	if(!turns)
+		while(ShaftCountRight<10)
+			velocity(100,100);
 	while(1)
 	{
 		flag=0;
@@ -1928,9 +1954,9 @@ int main()
 			if(noteangles[(int)notes[(int)noteToStrike]-1][0]==botang || noteangles[(int)notes[(int)noteToStrike]-1][1]==botang)
 			{
 				if(noteangles[(int)notes[(int)noteToStrike]-1][0]==botang)
-					servoStrike(0); // Strike Left
+					servoStrike(1); // Strike Left
 				else
-					servoStrike(1);//Strike Right
+					servoStrike(0);//Strike Right
 					
 				// Servo Motor Control
 				// Strike the Note
