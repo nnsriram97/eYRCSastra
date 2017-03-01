@@ -843,6 +843,9 @@ void declare_constants()
 #define ADD_COST 8		//ADD_COST[15:8] | TASKCOST[7:0]
 #define LAST_IND 9		//LAST_IND[15:8] | LASTINDEX[7:0]
 #define END_TASK 10		//END_TASK[15:8] | 0x00
+#define SWAP_TSK 14		//Swapping task 1 between the bots
+#define WCH_TASK 15		//Send Which Task
+#define RECV_SWAP 16	//Receiving Swap Task
 
 //Data can have at max 7 bits (0 - 127)
 //8th bit should be 1 to denote a data
@@ -861,15 +864,22 @@ char volatile noteToProcess = 0;
 char volatile tasks[MAX_NOTES];
 char volatile tasks2[MAX_NOTES];
 char volatile taskCount = 0;
+char volatile taskCount2 = 0;
 char volatile taskCost = 0;
-
+char volatile tmpTask1,tmpTask2;
+char volatile wchTask=0;
 char volatile otherBotTaskCost = 0;
 
 char volatile notesReceived = 0;
 char volatile notesReceived2 = 0;
 
+int volatile swap=0;
+int volatile taskitr=0;  // Task Iterating Variable
+
 int otherBotTask[MAX_NOTES]={};
 int	otherBotTaskCount=0;
+int otherBotTask2[MAX_NOTES]={};
+
 int botLastIndex = 1;
 
 #ifdef MASTER
@@ -915,14 +925,12 @@ ISR(USART0_RX_vect)
 			
 			case ADD_TASK:
 			tasks[(int)taskCount] = data;
-			tasks2[(int)taskCount] = -1;
 			taskCount++;
 			break;
 			
 			case ADD_TASK2:
-			tasks[(int)taskCount] = -1;
-			tasks2[(int)taskCount] = data;
-			taskCount++;
+			tasks2[(int)taskCount2] = data;
+			taskCount2++;
 			break;
 			
 			case NODE_RCH:
@@ -949,6 +957,52 @@ ISR(USART0_RX_vect)
 			
 			case LAST_IND:
 			otherBotLastTaskIndex=data;
+			break;
+			
+			case WCH_TASK:
+			wchTask=data;
+			break;
+			
+			case SWAP_TSK:
+			if(tasks[taskitr]!=127)
+				tmpTask1=tasks[taskitr];
+			else
+				tmpTask2=tasks2[taskitr];
+			if((int)wchTask==1)
+			{
+				tasks[taskitr]=data;
+				tasks2[taskitr]=127;
+			}
+			else
+			{
+				tasks2[taskitr]=data;
+				tasks[taskitr]=127;
+			}
+			if(tmpTask1!=127)
+			{
+				SendWhichTask(1);
+				SendRecvTask(tmpTask1);
+			}
+			else
+			{
+				SendWhichTask(2);
+				SendRecvTask(tmpTask2);
+			}
+			swap=1;
+			break;
+			
+			case RECV_SWAP:
+			if(wchTask==1)
+			{
+				tasks[taskitr]=data;
+				tasks2[taskitr]=127;
+			}
+			else
+			{
+				tasks2[taskitr]=data;
+				tasks[taskitr]=127;
+			}
+			swap=1;
 			break;
 			
 			case END_TASK:
@@ -1022,6 +1076,29 @@ void inline SendByteToSlave(unsigned char data)
 }
 
 
+//send swap task1
+void inline SendSwapTask(char task)
+{
+	SendByteToSlave(SWAP_TSK);
+	SendByteToSlave(DATA(task));
+	//otherBotLastTaskIndex=task;
+}
+
+//Send swap task 2
+void inline SendWhichTask(char task)
+{
+	SendByteToSlave(WCH_TASK);
+	SendByteToSlave(DATA(task));
+	//otherBotLastTaskIndex=task;
+}
+
+//Send the other task to the bot which called Swap Task
+void inline SendRecvTask(char task)
+{
+	SendByteToSlave(RECV_SWAP);
+	SendByteToSlave(DATA(task));
+	//otherBotLastTaskIndex=task;
+}
 
 //send this task to slave
 void inline SendTaskToSlave(char task)
@@ -1029,6 +1106,14 @@ void inline SendTaskToSlave(char task)
 	SendByteToSlave(ADD_TASK);
 	SendByteToSlave(DATA(task));
 	otherBotLastTaskIndex=task;
+}
+
+//send the task2 to slave
+void inline SendTask2ToSlave(char task)
+{
+	SendByteToSlave(ADD_TASK2);
+	SendByteToSlave(DATA(task));
+	//otherBotLastTaskIndex=task;
 }
 
 //Inform that a node has been reached
@@ -1121,6 +1206,7 @@ void inline SendTaskArray()
 	for(i = 0; i<otherBotTaskCount; i++)
 	{
 		SendTaskToSlave(otherBotTask[i]);
+		SendTask2ToSlave(otherBotTask2[i]);
 	}
 }
 
@@ -1172,7 +1258,7 @@ int botang=90;
 int speed=100;
 int strike=0;
 
-int taskitr=0;  // Task Iterating Variable
+
 
 volatile unsigned long int ShaftCountLeft = 0; //to keep track of left position encoder
 volatile unsigned long int ShaftCountRight = 0; //to keep track of right position encoder
@@ -1668,7 +1754,21 @@ void rotate(int turnang)
 	}
 	//velocity(0,0);
 }
-
+// Swapping Tasks between bots
+void swapTask(int itr)
+{
+	if(tasks[itr]!=127)
+	{
+		SendWhichTask(1);
+		SendSwapTask(tasks[itr]);
+	}
+	else
+	{
+		SendWhichTask(2);
+		SendSwapTask(tasks2[itr]);
+	}
+	swap=1;
+}
 void servoStrike(int side)
 {
 	if(!side)
@@ -1701,6 +1801,7 @@ void servoStrike(int side)
 	}
 }
 
+int prevbotloc=1;
 int move(int n)
 {
 	velocity(0,0);
@@ -1747,15 +1848,25 @@ int move(int n)
 		lcd_print(1,12,(int)Front_IR_Sensor,3);	//Front ir sensor Value
 		
 		
-		if(Front_IR_Sensor>0xff)
+		if(Front_IR_Sensor<145)
 		{
-			rotate(180);
+			/*rotate(180);
 			for(int j=0;j<4;j++)
 				if(node[node[botloc-1][n]-1][j]==botloc)
 				{
 					botang=angle[node[botloc-1][n]-1][j];
 					break;
-				}
+				}*/
+			int p=0;
+			if(n==0)
+			{
+				p=n+1;
+			}
+			turnang=angle[botloc-1][p]-botang;
+			rotate(turnang);
+			botang=angle[botloc-1][p];
+			prevbotloc=botloc;
+			botloc=node[botloc-1][p];
 			suc=0;
 			flag=1;
 		}
@@ -1840,19 +1951,62 @@ void processNotes()
 	int noteToProcess=0;
 	while(noteToProcess!=noteCount)
 	{
-		costplan(nodesnear[(int)notes[(int)noteToProcess]-1]);
+		int whichNote=0;
+		if(notes2[(int)noteToProcess]!=0)
+		{
+			int temp1=0,temp2=0;
+			costplan(nodesnear[(int)notes2[(int)noteToProcess]-1]);
+			if(cost[botLastIndex-1]>cost[(int)otherBotLastTaskIndex-1])
+				temp1=taskCost+otherBotTaskCost+cost[(int)otherBotLastTaskIndex-1];
+			else
+				temp1=taskCost+otherBotTaskCost+cost[botLastIndex-1];
+				
+			costplan(nodesnear[(int)notes[(int)noteToProcess]-1]);
+			if(cost[botLastIndex-1]>cost[(int)otherBotLastTaskIndex-1])
+				temp2=taskCost+otherBotTaskCost+cost[(int)otherBotLastTaskIndex-1];
+			else
+				temp2=taskCost+otherBotTaskCost+cost[botLastIndex-1];
+				
+			if(temp2>temp1)
+				whichNote=1;
+				
+		}
+		if(!whichNote)
+			costplan(nodesnear[(int)notes[(int)noteToProcess]-1]);
+		else
+			costplan(nodesnear[(int)notes2[(int)noteToProcess]-1]);
+			
 		if((taskCost+cost[botLastIndex-1])>((int)otherBotTaskCost+cost[(int)otherBotLastTaskIndex-1]))
 		{
 			otherBotTaskCost+=cost[otherBotLastTaskIndex-1];
 			otherBotLastTaskIndex=BotEndLocation((int)otherBotLastTaskIndex);
-			otherBotTask[otherBotTaskCount]=noteToProcess;
+			if(!whichNote)
+			{
+				otherBotTask[otherBotTaskCount]=noteToProcess;
+				otherBotTask2[otherBotTaskCount]=127;
+			}
+			else
+			{
+				otherBotTask2[otherBotTaskCount]=noteToProcess;
+				otherBotTask[otherBotTaskCount]=127;
+				
+			}
 			otherBotTaskCount++;
 		}
 		else
 		{
 			taskCost+=cost[botLastIndex-1];
 			botLastIndex=BotEndLocation(botLastIndex);
-			tasks[(int)taskCount]=noteToProcess;
+			if(!whichNote)
+			{	
+				tasks[(int)taskCount]=noteToProcess;
+				tasks2[(int)taskCount]=127;
+			}
+			else
+			{	
+				tasks2[(int)taskCount]=noteToProcess;
+				tasks[(int)taskCount]=127;
+			}
 			taskCount++;
 		}
 		noteToProcess++;
@@ -1903,14 +2057,25 @@ int main()
 	}
 	lcd_clear();
 	
-	while(notes[(int)noteToStrike]!=0 && taskitr!=taskCount)
+	while((notes[(int)noteToStrike]!=0 || notes2[(int)noteToStrike]!=0 ) && taskitr!=taskCount)
 	{	
-		printf("Current Task Node=%d \n",(int)notes[(int)tasks[taskitr]]);
+		//printf("Current Task Node=%d \n",(int)notes[(int)tasks[taskitr]]);
 		int taskDone=0;
+		int whichTask=0;
 		int i,minCost,nxtNode,pos;
-		costplan(nodesnear[(int)notes[(int)tasks[taskitr]]-1]);
-		lcd_print(2,12,(int)notes[(int)tasks[taskitr]],2);
-		printf("Cost Planned for task =%d Cost=%d",(int)tasks[taskitr],cost[botloc-1]);
+		if((int)tasks[taskitr]!=127)
+		{
+			costplan(nodesnear[(int)notes[(int)tasks[taskitr]]-1]);
+			lcd_print(2,12,(int)notes[(int)tasks[taskitr]],2);
+		}
+		else
+		{
+			whichTask=1;
+			costplan(nodesnear[(int)notes2[(int)tasks2[taskitr]]-1]);
+			lcd_print(2,12,(int)notes2[(int)tasks2[taskitr]],2);
+		}
+		
+		//printf("Cost Planned for task =%d Cost=%d",(int)tasks[taskitr],cost[botloc-1]);
 		while(cost[botloc-1]!=0)
 		{
 			lcd_print(2,5,botloc,2);
@@ -1928,16 +2093,28 @@ int main()
 					}
 			}
 			lcd_print(2,8,nxtNode,2);
+			if(otherBotMovingTo==botloc)
+				if(nxtNode==otherBotLocation)
+				{	
+					swapTask(taskitr);
+					swap=0;
+					break;
+				}
 			while((int)otherBotMovingTo==nxtNode);
 			while((int)otherBotLocation==nxtNode);
+			if(swap==1)
+			{
+				swap=0;
+				break;
+			}
 			SendNextNode(nxtNode);
 			taskDone=move(pos);
 			if(taskDone==0)
 			{
 				for(i=0;i<4;i++)
-					if(node[node[botloc-1][pos]-1][i]==nxtNode)
-						node[node[botloc-1][pos]-1][i]=0;
-				node[botloc-1][pos]=0;
+					if(node[node[prevbotloc-1][pos]-1][i]==nxtNode)
+						node[node[prevbotloc-1][pos]-1][i]=0;
+				node[prevbotloc-1][pos]=0;
 				break;
 			}
 			else
@@ -1950,8 +2127,11 @@ int main()
 			
 		if(cost[botloc-1]==0)
 		{
-			while(noteToStrike!=tasks[taskitr]);
-			if(noteangles[(int)notes[(int)noteToStrike]-1][0]==botang || noteangles[(int)notes[(int)noteToStrike]-1][1]==botang)
+			if(!whichTask)
+				while(noteToStrike!=tasks[taskitr]);
+			else
+				while(noteToStrike!=tasks2[taskitr]);
+			if((!whichTask) && (noteangles[(int)notes[(int)noteToStrike]-1][0]==botang || noteangles[(int)notes[(int)noteToStrike]-1][1]==botang))
 			{
 				if(noteangles[(int)notes[(int)noteToStrike]-1][0]==botang)
 					servoStrike(1); // Strike Left
@@ -1961,12 +2141,27 @@ int main()
 				// Servo Motor Control
 				// Strike the Note
 			}
+			else if((whichTask) && (noteangles[(int)notes2[(int)noteToStrike]-1][0]==botang || noteangles[(int)notes2[(int)noteToStrike]-1][1]==botang))
+			{
+				if(noteangles[(int)notes2[(int)noteToStrike]-1][0]==botang)
+				servoStrike(1); // Strike Left
+				else
+				servoStrike(0);//Strike Right
+				
+				// Servo Motor Control
+				// Strike the Note
+			}
 			else
 			{
 				int tpos=0,p=0;
 				for(int j=0;j<4;j++)
 				{
-					if(nodesnear[(int)notes[(int)noteToStrike]-1][j]!=0 && botloc==nodesnear[(int)notes[(int)noteToStrike]-1][j])
+					if((!whichTask) && (nodesnear[(int)notes[(int)noteToStrike]-1][j]!=0 && botloc==nodesnear[(int)notes[(int)noteToStrike]-1][j]))
+					{
+						tpos=j;
+						break;
+					}
+					else if((whichTask) && (nodesnear[(int)notes2[(int)noteToStrike]-1][j]!=0 && botloc==nodesnear[(int)notes2[(int)noteToStrike]-1][j]))
 					{
 						tpos=j;
 						break;
@@ -1974,7 +2169,13 @@ int main()
 				}
 				for(int j=0;j<4;j++)
 				{
-					if(node[botloc-1][j]==movToDestNote[(int)notes[(int)noteToStrike]-1][tpos])
+					if((!whichTask) && (node[botloc-1][j]==movToDestNote[(int)notes[(int)noteToStrike]-1][tpos]))
+					{
+						p=j;
+						nxtNode=node[botloc-1][j];
+						break;
+					}
+					else if((whichTask) && (node[botloc-1][j]==movToDestNote[(int)notes2[(int)noteToStrike]-1][tpos]))
 					{
 						p=j;
 						nxtNode=node[botloc-1][j];
@@ -1992,7 +2193,7 @@ int main()
 					SendNodeReached(botloc);
 				}
 			}
-			printf("Reached Destination node=%d \n",(int)notes[(int)tasks[taskitr]]);
+			//printf("Reached Destination node=%d \n",(int)notes[(int)tasks[taskitr]]);
 			buzzer_on();
 			_delay_ms(500);
 			buzzer_off();
