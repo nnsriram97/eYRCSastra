@@ -1,7 +1,7 @@
 #include <stdio.h>
 
 //Uncomment if this robot receives data from PC
-#define MASTER
+//#define MASTER
 
 #define loop_until_bit_is_set(sfr,bit) \
 do { } while (bit_is_clear(sfr, bit))
@@ -255,51 +255,51 @@ int nodesnear[33][6]={
 	{22,0,0,0,0,0},
 	{23,0,0,0,0,0},
 	{24,0,0,0,0,0},
-	{1,0,0,0,0,0},
+	{1,35,0,0,0,0},
 	{25,36,43,44,0,0},
-	{5,0,0,0,0,0},
-	{9,0,0,0,0,0},
+	{5,26,0,0,0,0},
+	{9,27,0,0,0,0},
 	{28,29,45,46,0,0},
-	{13,0,0,0,0,0},
-	{17,0,0,0,0,0},
+	{13,30,0,0,0,0},
+	{17,31,0,0,0,0},
 	{32,33,47,48,0,0},
-	{21,0,0,0,0,0},
+	{21,34,0,0,0,0},
 };   // Nodes to which each and every note is connected
 
-int noteangles[33][2]={
-	{90,255},
-	{75,240},
-	{60,225},
-	{45,210},
-	{30,195},
-	{15,180},
-	{0,165},
-	{345,150},
-	{330,135},
-	{315,120},
-	{300,105},
-	{285,90},
-	{270,75},
-	{255,60},
-	{240,45},
-	{225,30},
-	{210,15},
-	{195,0},
-	{180,345},
-	{165,330},
-	{150,315},
-	{135,300},
-	{120,90},
-	{105,285},
-	{255,90},
-	{240,60},
-	{195,30},
-	{135,330},
-	{120,300},
-	{75,270},
-	{15,210},
-	{0,180},
-	{315,150},
+int noteangles[33][4][2]={
+	{{90,255},{-1,-1},{-1,-1},{-1,-1}},
+	{{75,240},{-1,-1},{-1,-1},{-1,-1}},
+	{{60,225},{-1,-1},{-1,-1},{-1,-1}},
+	{{45,210},{-1,-1},{-1,-1},{-1,-1}},
+	{{30,195},{-1,-1},{-1,-1},{-1,-1}},
+	{{15,180},{-1,-1},{-1,-1},{-1,-1}},
+	{{0,165},{-1,-1},{-1,-1},{-1,-1}},
+	{{345,150},{-1,-1},{-1,-1},{-1,-1}},
+	{{330,135},{-1,-1},{-1,-1},{-1,-1}},
+	{{315,120},{-1,-1},{-1,-1},{-1,-1}},
+	{{300,105},{-1,-1},{-1,-1},{-1,-1}},
+	{{285,90},{-1,-1},{-1,-1},{-1,-1}},
+	{{270,75},{-1,-1},{-1,-1},{-1,-1}},
+	{{255,60},{-1,-1},{-1,-1},{-1,-1}},
+	{{240,45},{-1,-1},{-1,-1},{-1,-1}},
+	{{225,30},{-1,-1},{-1,-1},{-1,-1}},
+	{{210,15},{-1,-1},{-1,-1},{-1,-1}},
+	{{195,0},{-1,-1},{-1,-1},{-1,-1}},
+	{{180,345},{-1,-1},{-1,-1},{-1,-1}},
+	{{165,330},{-1,-1},{-1,-1},{-1,-1}},
+	{{150,315},{-1,-1},{-1,-1},{-1,-1}},
+	{{135,300},{-1,-1},{-1,-1},{-1,-1}},
+	{{120,90},{-1,-1},{-1,-1},{-1,-1}},
+	{{105,285},{-1,-1},{-1,-1},{-1,-1}},
+	{{255,90},{60,300},{-1,-1},{-1,-1}},
+	{{240,60},{-1,-1},{-1,-1},{-1,-1}},
+	{{195,30},{0,240},{-1,-1},{-1,-1}},
+	{{135,330},{300,180},{-1,-1},{-1,-1}},
+	{{120,300},{-1,-1},{-1,-1},{-1,-1}},
+	{{75,270},{240,120},{-1,-1},{-1,-1}},
+	{{15,210},{180,60},{-1,-1},{-1,-1}},
+	{{0,180},{-1,-1},{-1,-1},{-1,-1}},
+	{{315,150},{120,0},{-1,-1},{-1,-1}},
 };
 
 int movToDestNote[33][4]={
@@ -330,7 +330,7 @@ int movToDestNote[33][4]={
 	{1,0,0,0},
 	{36,25,44,43},
 	{5,0,0,0},
-	{9,0,0,0},
+	{9,28,0,0},
 	{29,28,46,45},
 	{13,0,0,0},
 	{17,0,0,0},
@@ -861,6 +861,10 @@ char volatile noteCount2 = 0;
 char volatile noteToStrike = 0;
 char volatile noteToProcess = 0;
 
+#ifdef MASTER
+char volatile BootInterrupt;
+#endif
+
 char volatile tasks[MAX_NOTES];
 char volatile tasks2[MAX_NOTES];
 char volatile taskCount = 0;
@@ -1064,6 +1068,10 @@ ISR(USART2_RX_vect)
 		}
 		
 	}
+}
+ISR(INT7_vect)
+{
+	BootInterrupt = 1;
 }
 #endif
 
@@ -1589,6 +1597,16 @@ void LED_bargraph_config (void)
 	PORTJ = 0x00; //Output is set to 0
 }
 
+#ifdef MASTER
+//config INT7(Boot switch) for a falling edge trigger
+void boot_Interrupt_config(void)
+{
+	DDRE = DDRE | 0x00;
+	EICRB = EICRB | 0x80;
+	EIMSK = EIMSK | 0x80;
+}
+#endif
+
 void init_devices()
 {
 	cli(); //Clears the global interrupt
@@ -1604,6 +1622,9 @@ void init_devices()
 	servo1_pin_config();
 	timer1_init();
 	LED_bargraph_config();
+	#ifdef MASTER
+	boot_Interrupt_config();	//config the Int7 (Boot switch)
+	#endif
 	sei();   // Enables the global interrupt
 }
 
@@ -1678,30 +1699,30 @@ void costplan(int note_loc[])    // Cost planning Function
 			if(node[s][i]!=0)
 			{
 				
-				if((cost[s]+1)<=cost[node[s][i]-1])
-				cost[node[s][i]-1]=(cost[s]+1);
+				if((cost[s]+1)<=cost[node[s][i]-1])	//if cost of moving from current node to next node is less
+				cost[node[s][i]-1]=(cost[s]+1);		// Then update the cost of the node.
 				if(tmploc[node[s][i]-1]!=1)
 				{
 					tmploc[node[s][i]-1]=1;
 					k=k+1;
-					list[k]=node[s][i];
+					list[k]=node[s][i];				// Add the explored node to the list in case if it is not seen already.
 				}
 				
 			}
 		}
-	}while(list[0]!=-1 || k!=-1);
+	}while(list[0]!=-1 || k!=-1);		// Do this till you explore all nodes and there is no element in the list
 }
 
-void rotate(int turnang)
+void rotate(int turnang)	// A function to make accurate angle rotations
 {
 	int f=0;
-	if(turnang<0)
+	if(turnang<0)		// Turn the bot accordingly such that it takes the minimum angle
 	{
 		turnang=-turnang;
 		if(turnang>180)
 		{
 			turnang=360-turnang;
-			left_degrees((turnang-20));
+			left_degrees((turnang-20));	// Turn the bot 20 less than the acutal turn angle so that we can make accurate turns
 		}
 		else
 		{
@@ -1722,9 +1743,9 @@ void rotate(int turnang)
 			left_degrees((turnang-20));
 		}
 	}
-	stop();
+	stop();		// Stop the bot before 20 degrees of the actual turn.
 	_delay_ms(50);
-	while(1)
+	while(1)	// And now check whether you detect any black line if so then stop the bot.
 	{
 		Left_white_line = ADC_Conversion(3);	//Getting data of Left WL Sensor
 		Center_white_line = ADC_Conversion(2);	//Getting data of Center WL Sensor
@@ -1744,7 +1765,7 @@ void rotate(int turnang)
 			right();
 			velocity(100,100);
 		}
-		if(Center_white_line>55 || Left_white_line>120 || Right_white_line>120)
+		if(Center_white_line>55 || Left_white_line>120 || Right_white_line>120)	// if the black lines are detected then the bot stops.
 		{	
 			stop();
 			break;
@@ -1755,11 +1776,11 @@ void rotate(int turnang)
 	//velocity(0,0);
 }
 // Swapping Tasks between bots
-void swapTask(int itr)
+void swapTask(int itr)	//Task Swapping func in case there is Lock Wait problem
 {
 	if(tasks[itr]!=127)
 	{
-		SendWhichTask(1);
+		SendWhichTask(1);	//Tells the Other bot which task array value is sent. 
 		SendSwapTask(tasks[itr]);
 	}
 	else
@@ -1769,9 +1790,9 @@ void swapTask(int itr)
 	}
 	swap=1;
 }
-void servoStrike(int side)
+void servoStrike(int side) // A servo Striking func called whenever wanna strike
 {
-	if(!side)
+	if(!side)	// which Side to be struck
 	{
 		for(int i=90;i>=0;i--)
 		{
@@ -1800,25 +1821,51 @@ void servoStrike(int side)
 		}
 	}
 }
-
-int prevbotloc=1;
-int move(int n)
+// This Function calculates the actual distance in millimeters(mm) from the input
+// analog value of Sharp Sensor.
+unsigned int Sharp_GP2D12_estimation(unsigned char adc_reading)
 {
-	velocity(0,0);
-	int suc=1,turnang;
-	turnang=angle[botloc-1][n]-botang;
-	int turns=0;
-	if(fabs(turnang)>45)
+	float distance;
+	unsigned int distanceInt;
+	distance = (int)(10.00*(2799.6*(1.00/(pow(adc_reading,1.1546)))));
+	distanceInt = (int)distance;
+	if(distanceInt>800)
+	{
+		distanceInt=800;
+	}
+	return distanceInt;
+}
+
+int prevbotloc=1; //A global variable used in case there is a obstacle in the path.
+int q=0;
+int prevShaftCount=0;
+int move(int n)		// A bot move function which is used to move the bot to the next node.
+{
+	velocity(0,0);	//Let it start from zero velocity
+	int suc=1,turnang;	// The success variable tells whether it successfully reached the next node.
+	if(botang==0)
+	{
+		int tempang1=angle[botloc-1][n]-botang;
+		int tempang2=angle[botloc-1][n]-360;
+		if(fabs(tempang2)>fabs(tempang1))
+			turnang=tempang1;
+		else
+			turnang=tempang2;
+	}
+	else
+		turnang=angle[botloc-1][n]-botang;	// The turn angle which the bot should be turned.
+	int turns=0;	//Flag variable to detect whether the bot went inside turn angle function.
+	if(fabs(turnang)>45)	// Turn the bot only when the angle is >45 or else follow the path
 	{
 		turns=1;
-		forward_mm(70);
-		rotate(turnang);
+		forward_mm(70);	// Move the 7cm forward so that the wheel to the node position
+		rotate(turnang);	// Call the rotate function to rotate the bot
 	}
-	botang=angle[botloc-1][n];
+	botang=angle[botloc-1][n]; //Update the bot angle as it turned to that angle.
 	
-	if(strike==1)
+	if(strike==1)	// In case if the strike is 1 the bot strikes the note and moves to the next note.
 	{
-		if(noteangles[(int)notes[(int)noteToStrike]-1][0]==botang)
+		if(noteangles[(int)notes[(int)noteToStrike]-1][q][0]==botang)
 			servoStrike(1);//Strike Left
 		else
 			servoStrike(0);//Strike Right
@@ -1829,8 +1876,9 @@ int move(int n)
 	}
 	
 	forward();
-	int flag=0;
+	int flag=0,shaftitr=0;
 	ShaftCountRight=0;
+	prevShaftCount=ShaftCountRight;
 	if(!turns)
 		while(ShaftCountRight<10)
 			velocity(100,100);
@@ -1847,8 +1895,24 @@ int move(int n)
 		lcd_print(1,9,(int)Right_white_line,3);	//Prints Value of White Line Sensor3
 		lcd_print(1,12,(int)Front_IR_Sensor,3);	//Front ir sensor Value
 		
+		if(prevShaftCount==ShaftCountRight)
+		{
+			shaftitr++;
+			if(shaftitr>50)
+			{	
+				speed=speed+30;
+				shaftitr=0;
+			}
+		}
+		else
+		{
+			prevShaftCount=ShaftCountRight;
+			speed=100;
+			shaftitr=0;
+		}
 		
-		if(Front_IR_Sensor<145)
+		
+		if(Front_IR_Sensor<105)
 		{
 			/*rotate(180);
 			for(int j=0;j<4;j++)
@@ -1936,8 +2000,8 @@ int BotEndLocation(int loc)
 //PC Debug
 uart_putchar(char c, FILE *stream)
 {
-	//if(c=='\n')
-	//uart_putchar('\r', stream);
+	if(c=='\n')
+		uart_putchar('\r', stream);
 	loop_until_bit_is_set(UCSR2A, UDRE2);
 	UDR2 = c;
 }
@@ -2024,7 +2088,14 @@ int main()
 	PORTJ = 0x00;
 	notesReceived = 0;
 	lcd_string("Waiting...");
-	while(!notesReceived2);
+	//while(!notesReceived2);
+	#ifdef MASTER
+		while(!BootInterrupt);
+	#endif
+	#ifndef MASTER
+		while(!notesReceived2);
+	#endif
+
 	lcd_clear();
 	lcd_string("Received!");
 	PORTJ = 0xFF;
@@ -2048,13 +2119,8 @@ int main()
 	
 	//PC Debug (printf)
 	stdout = &uart_debug;
-		
+	printf("Gonna Start!!!\n");
 	int i=0;
-	for(i=0;i<noteCount;i++)
-	{
-		lcd_print(2,1,(int)notes[i],2);
-		_delay_ms(1000);
-	}
 	lcd_clear();
 	
 	while((notes[(int)noteToStrike]!=0 || notes2[(int)noteToStrike]!=0 ) && taskitr!=taskCount)
@@ -2079,10 +2145,10 @@ int main()
 		while(cost[botloc-1]!=0)
 		{
 			lcd_print(2,5,botloc,2);
-			minCost=cost[node[botloc-1][0]-1];
+			minCost=99;
 			nxtNode=node[botloc-1][0];
 			pos=0;
-			for(i=1;i<4;i++)
+			for(i=0;i<4;i++)
 			{
 				if(node[botloc-1][i]!=0)
 					if(cost[node[botloc-1][i]-1]<minCost)
@@ -2109,10 +2175,10 @@ int main()
 			}
 			SendNextNode(nxtNode);
 			taskDone=move(pos);
-			if(taskDone==0)
+			if(!taskDone)
 			{
 				for(i=0;i<4;i++)
-					if(node[node[prevbotloc-1][pos]-1][i]==nxtNode)
+					if(node[node[prevbotloc-1][pos]-1][i]==prevbotloc)
 						node[node[prevbotloc-1][pos]-1][i]=0;
 				node[prevbotloc-1][pos]=0;
 				break;
@@ -2131,9 +2197,23 @@ int main()
 				while(noteToStrike!=tasks[taskitr]);
 			else
 				while(noteToStrike!=tasks2[taskitr]);
-			if((!whichTask) && (noteangles[(int)notes[(int)noteToStrike]-1][0]==botang || noteangles[(int)notes[(int)noteToStrike]-1][1]==botang))
+			if(!whichTask)
 			{
-				if(noteangles[(int)notes[(int)noteToStrike]-1][0]==botang)
+				for(int i=0;i<4;i++)
+					if(botloc==nodesnear[(int)notes[(int)noteToStrike]-1][i])
+						q=i;
+			}
+			else
+			{
+				for(int i=0;i<4;i++)
+					if(botloc==nodesnear[(int)notes2[(int)noteToStrike]-1][i])
+						q=i;
+			}
+			printf("Currently on %d of nodesnear of that note \n",q);
+			if((!whichTask) && (noteangles[(int)notes[(int)noteToStrike]-1][q][0]==botang || noteangles[(int)notes[(int)noteToStrike]-1][q][1]==botang))
+			{
+				printf("Gonna Strike here itself as botang = %d \n",botang);
+				if(noteangles[(int)notes[(int)noteToStrike]-1][q][0]==botang)
 					servoStrike(1); // Strike Left
 				else
 					servoStrike(0);//Strike Right
@@ -2141,9 +2221,10 @@ int main()
 				// Servo Motor Control
 				// Strike the Note
 			}
-			else if((whichTask) && (noteangles[(int)notes2[(int)noteToStrike]-1][0]==botang || noteangles[(int)notes2[(int)noteToStrike]-1][1]==botang))
+			else if((whichTask) && (noteangles[(int)notes2[(int)noteToStrike]-1][q][0]==botang || noteangles[(int)notes2[(int)noteToStrike]-1][q][1]==botang))
 			{
-				if(noteangles[(int)notes2[(int)noteToStrike]-1][0]==botang)
+				printf("Gonna Strike here itself as botang = %d \n",botang);
+				if(noteangles[(int)notes2[(int)noteToStrike]-1][q][0]==botang)
 				servoStrike(1); // Strike Left
 				else
 				servoStrike(0);//Strike Right
@@ -2153,6 +2234,7 @@ int main()
 			}
 			else
 			{
+				printf("Gonna move to next node as botang = %d \n",botang);
 				int tpos=0,p=0;
 				for(int j=0;j<4;j++)
 				{
@@ -2194,9 +2276,9 @@ int main()
 				}
 			}
 			//printf("Reached Destination node=%d \n",(int)notes[(int)tasks[taskitr]]);
-			buzzer_on();
-			_delay_ms(500);
-			buzzer_off();
+			//buzzer_on();
+			//_delay_ms(500);
+			//buzzer_off();
 			taskitr++;
 			SendNoteStruck(noteToStrike);
 		}
