@@ -1,7 +1,7 @@
 #include <stdio.h>
 
 //Uncomment if this robot receives data from PC
-//#define MASTER
+#define MASTER
 
 #define loop_until_bit_is_set(sfr,bit) \
 do { } while (bit_is_clear(sfr, bit))
@@ -1265,6 +1265,7 @@ int botang=90;
 
 int speed=100;
 int strike=0;
+int whichTask=0;
 
 
 
@@ -1722,12 +1723,12 @@ void rotate(int turnang)	// A function to make accurate angle rotations
 		if(turnang>180)
 		{
 			turnang=360-turnang;
-			left_degrees((turnang-20));	// Turn the bot 20 less than the acutal turn angle so that we can make accurate turns
+			left_degrees((turnang-25));	// Turn the bot 20 less than the acutal turn angle so that we can make accurate turns
 		}
 		else
 		{
 			f=1;
-			right_degrees((turnang-20));
+			right_degrees((turnang-25));
 		}
 	}
 	else
@@ -1736,11 +1737,11 @@ void rotate(int turnang)	// A function to make accurate angle rotations
 		{
 			f=1;
 			turnang=360-turnang;
-			right_degrees((turnang-20));
+			right_degrees((turnang-25));
 		}
 		else
 		{
-			left_degrees((turnang-20));
+			left_degrees((turnang-25));
 		}
 	}
 	stop();		// Stop the bot before 20 degrees of the actual turn.
@@ -1865,11 +1866,71 @@ int move(int n)		// A bot move function which is used to move the bot to the nex
 	
 	if(strike==1)	// In case if the strike is 1 the bot strikes the note and moves to the next note.
 	{
-		if(noteangles[(int)notes[(int)noteToStrike]-1][q][0]==botang)
-			servoStrike(1);//Strike Left
+		if(!whichTask)
+		{
+			if(noteangles[(int)notes[(int)noteToStrike]-1][q][0]==botang)
+				servoStrike(1);//Strike Left
+			else if(noteangles[(int)notes[(int)noteToStrike]-1][q][1]==botang)
+				servoStrike(0);//Strike Right
+			else
+			{
+				int struck=0;
+				int tempang=fabs(noteangles[(int)notes[(int)noteToStrike]-1][q][0]-botang);
+				if(tempang==180)
+				{
+					struck=1;
+					servoStrike(0);
+				}
+				tempang=fabs(noteangles[(int)notes[(int)noteToStrike]-1][q][1]-botang);
+				if(tempang==180)
+				{	
+					struck=1;
+					servoStrike(1);
+				}
+				if(!struck)
+				{
+					int compareAngle1=fabs(noteangles[(int)notes[(int)noteToStrike]-1][q][0]-botang);
+					int compareAngle2=fabs(noteangles[(int)notes[(int)noteToStrike]-1][q][1]-botang);
+					if(compareAngle1>compareAngle2)
+						servoStrike(0);
+					else
+						servoStrike(1);
+				}
+				
+			}
+		}
 		else
-			servoStrike(0);//Strike Right
-		
+		{
+			if(noteangles[(int)notes2[(int)noteToStrike]-1][q][0]==botang)
+				servoStrike(1);//Strike Left
+			else if(noteangles[(int)notes2[(int)noteToStrike]-1][q][1]==botang)
+				servoStrike(0);//Strike Right
+			else
+			{
+				int struck=0;
+				int tempang=fabs(noteangles[(int)notes2[(int)noteToStrike]-1][q][0]-botang);
+				if(tempang==180)
+				{
+					struck=1;
+					servoStrike(0);
+				}
+				tempang=fabs(noteangles[(int)notes2[(int)noteToStrike]-1][q][1]-botang);
+				if(tempang==180)
+				{
+					struck=1;
+					servoStrike(1);
+				}
+				if(!struck)
+				{
+					int compareAngle1=fabs(noteangles[(int)notes2[(int)noteToStrike]-1][q][0]-botang);
+					int compareAngle2=fabs(noteangles[(int)notes2[(int)noteToStrike]-1][q][1]-botang);
+					if(compareAngle1>compareAngle2)
+					servoStrike(0);
+					else
+					servoStrike(1);
+				}
+			}
+		}
 		// Servo Motor Control
 		// Strike the Note
 		strike=0;
@@ -1912,7 +1973,7 @@ int move(int n)		// A bot move function which is used to move the bot to the nex
 		}
 		
 		
-		if(Front_IR_Sensor<105)
+		if(Front_IR_Sensor<112)
 		{
 			/*rotate(180);
 			for(int j=0;j<4;j++)
@@ -2127,7 +2188,7 @@ int main()
 	{	
 		//printf("Current Task Node=%d \n",(int)notes[(int)tasks[taskitr]]);
 		int taskDone=0;
-		int whichTask=0;
+		whichTask=0;
 		int i,minCost,nxtNode,pos;
 		if((int)tasks[taskitr]!=127)
 		{
